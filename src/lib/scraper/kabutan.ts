@@ -25,7 +25,7 @@ export interface ScrapedStock {
 // パーサー
 // ────────────────────────────────────────────────
 
-function parseNumber(text: string): number | null {
+export function parseNumber(text: string): number | null {
   if (!text) return null;
   const cleaned = text.replace(/[,\s株円回　]/g, "").trim();
   if (!cleaned || cleaned === "-" || cleaned === "－" || cleaned === "---") return null;
@@ -34,7 +34,7 @@ function parseNumber(text: string): number | null {
 }
 
 /** "141,573 百万円" → 141_573_000_000 (円) */
-function parseTradingValue(text: string): number | null {
+export function parseTradingValue(text: string): number | null {
   if (!text) return null;
   if (text.includes("百万")) {
     const n = parseFloat(text.replace(/[,\s百万円　]/g, ""));
@@ -48,7 +48,7 @@ function parseTradingValue(text: string): number | null {
 }
 
 /** "5兆1,637億円" / "1,200億円" / "500百万円" → 円 */
-function parseMarketCap(text: string): number | null {
+export function parseMarketCap(text: string): number | null {
   if (!text) return null;
   let total = 0;
   const cho = text.match(/([0-9,]+(?:\.[0-9]+)?)兆/);
