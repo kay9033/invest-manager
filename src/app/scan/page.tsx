@@ -1,0 +1,223 @@
+"use client";
+
+import { useState } from "react";
+import StockTable, { StockColumn } from "@/components/StockTable";
+
+interface ScanResult {
+  code: string;
+  name: string;
+  closePrice: number | null;
+  volume: number | null;
+  tradingValue: number | null;
+  passed: boolean;
+  score: number;
+  reasons: string[];
+}
+
+interface ScanResponse {
+  scanned: number;
+  passed: number;
+  results: ScanResult[];
+}
+
+type RowData = Record<string, unknown> & ScanResult;
+
+const columns: StockColumn<RowData>[] = [
+  { key: "code", label: "コード", sortable: true },
+  { key: "name", label: "社名", sortable: false },
+  {
+    key: "closePrice",
+    label: "株価",
+    sortable: true,
+    align: "right",
+    render: (v) =>
+      v !== null ? `${(v as number).toLocaleString()}円` : "-",
+  },
+  {
+    key: "volume",
+    label: "出来高",
+    sortable: true,
+    align: "right",
+    render: (v) =>
+      v !== null ? (v as number).toLocaleString() : "-",
+  },
+  {
+    key: "tradingValue",
+    label: "売買代金",
+    sortable: true,
+    align: "right",
+    render: (v) =>
+      v !== null
+        ? `${((v as number) / 100_000_000).toFixed(1)}億円`
+        : "-",
+  },
+  {
+    key: "score",
+    label: "スコア",
+    sortable: true,
+    align: "right",
+    render: (v) => `${v}`,
+  },
+  {
+    key: "passed",
+    label: "フィルター",
+    align: "center",
+    render: (v) =>
+      v ? (
+        <span className="text-emerald-400 font-medium">通過</span>
+      ) : (
+        <span className="text-red-400">不通過</span>
+      ),
+  },
+];
+
+export default function ScanPage() {
+  const [loading, setLoading] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState<Record<string, boolean>>({});
+  const [added, setAdded] = useState<Record<string, boolean>>({});
+
+  async function handleScan() {
+    setLoading(true);
+    setError(null);
+    setScanResult(null);
+    try {
+      const res = await fetch("/api/scan", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(
+          (body as { error?: string }).error ?? `HTTP ${res.status}`
+        );
+      }
+      const data = (await res.json()) as ScanResponse;
+      setScanResult(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAddToWatchlist(code: string, name: string) {
+    setAdding((prev) => ({ ...prev, [code]: true }));
+    try {
+      const res = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code,
+          reason: `スキャンで検出（${name}）`,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAdded((prev) => ({ ...prev, [code]: true }));
+    } catch (err) {
+      alert(`追加に失敗: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setAdding((prev) => ({ ...prev, [code]: false }));
+    }
+  }
+
+  const passedResults = scanResult?.results.filter((r) => r.passed) ?? [];
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-white">スキャン実行</h1>
+          <p className="mt-1 text-sm text-gray-400">
+            カブタン新高値銘柄をスクレイピングしてフィルタリング
+          </p>
+        </div>
+        <a href="/" className="text-sm text-gray-400 hover:text-white">
+          ← ホーム
+        </a>
+      </div>
+
+      <button
+        onClick={handleScan}
+        disabled={loading}
+        className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-colors"
+      >
+        {loading ? "スキャン中..." : "スキャン実行"}
+      </button>
+
+      {error && (
+        <div className="bg-red-900/50 border border-red-700 rounded-lg p-4 text-red-300 text-sm">
+          エラー: {error}
+        </div>
+      )}
+
+      {scanResult && (
+        <div className="space-y-6">
+          {/* サマリー */}
+          <div className="flex gap-6 text-sm">
+            <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <span className="text-gray-400">スキャン件数: </span>
+              <span className="font-bold text-white">
+                {scanResult.scanned}
+              </span>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
+              <span className="text-gray-400">フィルター通過: </span>
+              <span className="font-bold text-emerald-400">
+                {scanResult.passed}
+              </span>
+            </div>
+          </div>
+
+          {/* フィルター通過銘柄への一括追加ボタン */}
+          {passedResults.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold text-white">
+                フィルター通過銘柄 ({passedResults.length}件)
+              </h2>
+              <div className="space-y-2">
+                {passedResults.map((r) => (
+                  <div
+                    key={r.code}
+                    className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <span className="font-mono font-bold text-emerald-400">
+                        {r.code}
+                      </span>
+                      <span className="ml-3 text-white">{r.name}</span>
+                      <span className="ml-3 text-xs text-gray-400">
+                        スコア: {r.score}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => handleAddToWatchlist(r.code, r.name)}
+                      disabled={adding[r.code] || added[r.code]}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {added[r.code]
+                        ? "追加済み"
+                        : adding[r.code]
+                          ? "追加中..."
+                          : "監視リストに追加"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 全結果テーブル */}
+          <div>
+            <h2 className="text-lg font-semibold text-white mb-3">
+              全スキャン結果
+            </h2>
+            <StockTable
+              data={scanResult.results as RowData[]}
+              columns={columns}
+              emptyMessage="スキャン結果がありません"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
