@@ -136,8 +136,10 @@ Brave Search APIキー取得: https://brave.com/search/api/
 
 ```bash
 npm run dev             # 開発サーバー起動
+pkill -f "next dev"     # 開発サーバー停止（バックグラウンド起動時）
 npm run build           # プロダクションビルド
 npm run scrape          # 手動スクレイプ実行
 npx drizzle-kit push    # DBスキーマ適用
 npx drizzle-kit studio  # DB GUI
+npm test                # テスト実行
 ```
