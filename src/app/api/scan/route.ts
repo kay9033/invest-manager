@@ -41,7 +41,7 @@ export async function POST() {
         })
         .run();
 
-      // フィルタリング実行
+      // フィルタリング実行（個別ページから取得した最新データを優先）
       const scanData: ScanData = {
         code: item.code,
         name: item.name,
@@ -49,7 +49,8 @@ export async function POST() {
         volume: item.volume,
         avgVolume25: null,
         tradingValue: item.tradingValue,
-        epsGrowthRate: existing?.epsGrowthRate ?? null,
+        epsGrowthRate: item.epsGrowthRate ?? existing?.epsGrowthRate ?? null,
+        salesGrowthRate: item.salesGrowthRate ?? null,
         isNewHigh: true,
       };
 

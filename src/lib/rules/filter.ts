@@ -6,6 +6,7 @@ export interface ScanData {
   avgVolume25: number | null;
   tradingValue: number | null;
   epsGrowthRate: number | null;
+  salesGrowthRate?: number | null;
   isNewHigh: boolean;
   volumeRatio?: number | null;
 }
@@ -73,15 +74,30 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push("出来高: データなし（要確認）");
   }
 
-  // 5. EPS成長率25%以上チェック（中小型株向け加点）
+  // 5. EPS成長率チェック（中小型株向け加点）
   if (scan.epsGrowthRate !== null) {
     if (scan.epsGrowthRate >= 25) {
       score += 10;
       reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 優良`);
+    } else if (scan.epsGrowthRate >= 0) {
+      score += 3;
+      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 増益`);
     } else {
-      reasons.push(
-        `EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 25%未満（成長性注意）`
-      );
+      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 減益注意`);
+    }
+  }
+
+  // 6. 売上高成長率チェック（CLAUDE.md優先項目: +20%以上）
+  if (scan.salesGrowthRate != null) {
+    const sgr = scan.salesGrowthRate!;
+    if (sgr >= 20) {
+      score += 10;
+      reasons.push(`売上成長率${sgr.toFixed(1)}% - 優先条件クリア`);
+    } else if (sgr >= 0) {
+      score += 3;
+      reasons.push(`売上成長率${sgr.toFixed(1)}% - 増収`);
+    } else {
+      reasons.push(`売上成長率${sgr.toFixed(1)}% - 減収注意`);
     }
   }
 
