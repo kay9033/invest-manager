@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest",
+    "test": "vitest run",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "scrape": "npx tsx src/lib/scraper/kabutan.ts"
@@ -29,6 +29,7 @@
     "playwright": "^1.51.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }
