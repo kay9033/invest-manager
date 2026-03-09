@@ -37,25 +37,21 @@ export function filterStock(scan: ScanData): FilterResult {
     score += 10;
   }
 
-  // 3. 売買代金5億円以上チェック（必須）
-  const tradingValueOk =
-    scan.tradingValue !== null && scan.tradingValue >= 500_000_000;
-  if (!tradingValueOk) {
-    const val =
-      scan.tradingValue !== null
-        ? `${(scan.tradingValue / 100_000_000).toFixed(1)}億円`
-        : "不明";
-    reasons.push(`売買代金${val} - 5億円未満（流動性不足）`);
-    return { passed: false, reasons, score };
-  }
-  score += 30;
-  // 売買代金が多いほど加点
+  // 3. 売買代金チェック（データある場合のみ必須）
   if (scan.tradingValue !== null) {
-    if (scan.tradingValue >= 10_000_000_000) score += 10; // 100億円以上
-    else if (scan.tradingValue >= 2_000_000_000) score += 5; // 20億円以上
+    if (scan.tradingValue < 500_000_000) {
+      reasons.push(`売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円 - 5億円未満（流動性不足）`);
+      return { passed: false, reasons, score };
+    }
+    score += 30;
+    if (scan.tradingValue >= 10_000_000_000) score += 10;
+    else if (scan.tradingValue >= 2_000_000_000) score += 5;
+  } else {
+    reasons.push("売買代金: データなし（要確認）");
+    score += 15; // データなしは減点なしだが満点も与えない
   }
 
-  // 4. 出来高スパイク（直近25日平均の150%以上）チェック（必須）
+  // 4. 出来高スパイクチェック（データある場合のみ必須）
   let volumeRatio: number | null = scan.volumeRatio ?? null;
   if (
     volumeRatio === null &&
@@ -66,15 +62,15 @@ export function filterStock(scan: ScanData): FilterResult {
     volumeRatio = (scan.volume / scan.avgVolume25) * 100;
   }
 
-  if (volumeRatio !== null && volumeRatio < 150) {
-    reasons.push(
-      `出来高比率${volumeRatio.toFixed(0)}% - 25日平均の150%未満（スパイクなし）`
-    );
-    return { passed: false, reasons, score };
-  }
   if (volumeRatio !== null) {
+    if (volumeRatio < 150) {
+      reasons.push(`出来高比率${volumeRatio.toFixed(0)}% - 25日平均の150%未満（スパイクなし）`);
+      return { passed: false, reasons, score };
+    }
     score += 20;
-    if (volumeRatio >= 300) score += 10; // 300%以上は特に強い
+    if (volumeRatio >= 300) score += 10;
+  } else {
+    reasons.push("出来高: データなし（要確認）");
   }
 
   // 5. EPS成長率25%以上チェック（中小型株向け加点）

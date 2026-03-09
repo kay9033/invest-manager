@@ -12,36 +12,13 @@ export interface ScrapedStock {
   tradingValue: number | null;
 }
 
-const TARGET_URL =
-  "https://kabutan.jp/warning/?mode=2_9&market=1&capitalgroupid=0";
+// 52週高値更新銘柄ページ
+const TARGET_URL = "https://kabutan.jp/warning/record_w52_high_price";
 
 function parseNumber(text: string): number | null {
   if (!text) return null;
-  // カンマ・空白・円・株などを除去
-  const cleaned = text.replace(/[,\s円株万億]/g, "").trim();
-  if (cleaned === "" || cleaned === "-" || cleaned === "---") return null;
-
-  // 万・億の単位変換は不要（生数値を取得）
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
-}
-
-function parseTradingValue(text: string): number | null {
-  if (!text) return null;
-  const cleaned = text.replace(/[,\s]/g, "").trim();
-  if (cleaned === "" || cleaned === "-") return null;
-
-  // 「億」単位の場合
-  if (text.includes("億")) {
-    const num = parseFloat(cleaned.replace("億", ""));
-    return isNaN(num) ? null : num * 100_000_000;
-  }
-  // 「万」単位の場合
-  if (text.includes("万")) {
-    const num = parseFloat(cleaned.replace("万", ""));
-    return isNaN(num) ? null : num * 10_000;
-  }
-
+  const cleaned = text.replace(/[,\s円株万億　]/g, "").trim();
+  if (cleaned === "" || cleaned === "-" || cleaned === "－" || cleaned === "---") return null;
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
 }
@@ -53,69 +30,47 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
   const page = await context.newPage();
-
   const results: ScrapedStock[] = [];
 
   try {
-    await page.goto(TARGET_URL, { waitUntil: "networkidle", timeout: 30000 });
+    await page.goto(TARGET_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await page.waitForTimeout(2000);
 
-    // テーブルの行を取得
-    const rows = await page.$$("table.stock_table tbody tr, table tbody tr");
+    // tbody の全行を処理
+    // 構造: td.tac(コード) | th[scope=row](社名) | td.tac(市場) | td.gaiyou_icon | td.chart_icon | td(株価) | td(S/空) | td.w61(前日比) | td.w50(%) | td.news_icon | td(PER) | td(PBR) | td(利回り)
+    const rows = await page.$$("table.stock_table tbody tr");
 
     for (const row of rows) {
       try {
-        const cells = await row.$$("td");
-        if (cells.length < 4) continue;
+        const codeEl = await row.$("td.tac a");
+        if (!codeEl) continue;
 
-        // 銘柄コードと社名のセル
-        const codeCell = cells[0];
-        const codeText = (await codeCell.textContent()) ?? "";
-        const code = codeText.trim().match(/\d{4}/)?.[0];
+        const codeHref = await codeEl.getAttribute("href") ?? "";
+        const codeMatch = codeHref.match(/code=([^&]+)/);
+        const code = codeMatch?.[1]?.trim();
         if (!code) continue;
 
-        // 社名
-        const nameCell = cells[1];
-        const nameText = ((await nameCell.textContent()) ?? "").trim();
-        if (!nameText) continue;
+        const nameEl = await row.$("th[scope='row']");
+        const name = ((await nameEl?.textContent()) ?? "").trim();
+        if (!name) continue;
 
-        // 市場
-        let market = "";
-        try {
-          const marketEl = await nameCell.$(".market, .exchange");
-          if (marketEl) {
-            market = ((await marketEl.textContent()) ?? "").trim();
-          }
-        } catch {
-          // 市場情報が取れない場合は空のまま
-        }
+        // 市場: 2番目の td.tac
+        const marketTds = await row.$$("td.tac");
+        const market = marketTds.length >= 2
+          ? ((await marketTds[1].textContent()) ?? "").trim()
+          : "";
 
-        // 株価（終値）
-        const priceCell = cells[2] ?? cells[3];
-        const priceText = ((await priceCell.textContent()) ?? "").trim();
+        // 全tdを取得して株価を探す (gaiyou_icon/chart_iconを除いた5番目のtd)
+        const allTds = await row.$$("td");
+        // td[0]=コード, td[1]=市場, td[2]=gaiyou_icon, td[3]=chart_icon, td[4]=株価
+        const priceText = allTds[4]
+          ? ((await allTds[4].textContent()) ?? "").trim()
+          : "";
         const closePrice = parseNumber(priceText);
 
-        // 出来高
-        let volume: number | null = null;
-        let tradingValue: number | null = null;
-
-        if (cells.length >= 6) {
-          const volumeText = ((await cells[4].textContent()) ?? "").trim();
-          volume = parseNumber(volumeText);
-
-          const tradingText = ((await cells[5].textContent()) ?? "").trim();
-          tradingValue = parseTradingValue(tradingText);
-        }
-
-        results.push({
-          code,
-          name: nameText,
-          market,
-          closePrice,
-          volume,
-          tradingValue,
-        });
+        // 出来高・売買代金はこのページにないのでnull
+        results.push({ code, name, market, closePrice, volume: null, tradingValue: null });
       } catch {
-        // 個別行のエラーはスキップ
         continue;
       }
     }
@@ -138,7 +93,6 @@ export async function runScrape(): Promise<{
 
   for (const item of scrapedData) {
     try {
-      // stocksテーブルにupsert
       const existing = db
         .select()
         .from(stocks)
@@ -147,11 +101,7 @@ export async function runScrape(): Promise<{
 
       if (!existing) {
         db.insert(stocks)
-          .values({
-            code: item.code,
-            name: item.name,
-            market: item.market || null,
-          })
+          .values({ code: item.code, name: item.name, market: item.market || null })
           .run();
       } else if (existing.name !== item.name) {
         db.update(stocks)
@@ -160,7 +110,6 @@ export async function runScrape(): Promise<{
           .run();
       }
 
-      // scansテーブルに挿入
       db.insert(scans)
         .values({
           code: item.code,
@@ -183,14 +132,11 @@ export async function runScrape(): Promise<{
   return { scraped: scrapedData.length, saved, errors };
 }
 
-// CLIから直接実行する場合
 if (require.main === module) {
   runScrape()
     .then((result) => {
       console.log(`スクレイプ完了: ${result.scraped}件取得, ${result.saved}件保存`);
-      if (result.errors.length > 0) {
-        console.error("エラー:", result.errors);
-      }
+      if (result.errors.length > 0) console.error("エラー:", result.errors);
       process.exit(0);
     })
     .catch((err) => {
