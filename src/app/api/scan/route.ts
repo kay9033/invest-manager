@@ -11,6 +11,9 @@ export async function POST() {
     const today = new Date().toISOString().split("T")[0];
     const results = [];
 
+    // 同日の既存スキャン結果を削除して重複を防ぐ
+    db.delete(scans).where(eq(scans.scanDate, today)).run();
+
     for (const item of scraped) {
       // stocksテーブルにupsert
       const existing = db
