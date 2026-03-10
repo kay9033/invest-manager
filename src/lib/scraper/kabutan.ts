@@ -448,7 +448,7 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
           const th = tr.querySelector("th");
           const label = th?.textContent?.trim() ?? "";
           const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
-          if ((label.includes("単") || label.includes("連")) && !label.includes("予") && tds.length >= 5) {
+          if ((label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) && !label.includes("予") && tds.length >= 5) {
             annualRows.push({ label, values: tds });
           }
         }
@@ -473,7 +473,7 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
           const th = tr.querySelector("th");
           const label = th?.textContent?.trim() ?? "";
           const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
-          if ((label.includes("単") || label.includes("連")) && !label.includes("予") && tds.length >= 4) {
+          if ((label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) && !label.includes("予") && tds.length >= 4) {
             kpiRows.push({ label, values: tds });
           }
         }
