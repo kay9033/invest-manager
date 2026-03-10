@@ -61,6 +61,9 @@ export async function POST() {
         roe: item.roe,
         annualEpsGrowths: item.annualEpsGrowths,
         operatingMarginImproving: item.operatingMarginImproving,
+        marginRatio: item.marginRatio,
+        rs3m: item.rs3m,
+        rs6m: item.rs6m,
       };
 
       const filterResult = filterStock(scanData);

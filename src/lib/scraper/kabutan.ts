@@ -26,6 +26,11 @@ export interface ScrapedStock {
   roe: number | null;                       // ROE（直近期）
   annualEpsGrowths: (number | null)[];      // 年次EPS前期比成長率の配列（古い順）
   operatingMarginImproving: boolean | null; // 営業利益率が改善傾向か
+  // 個別ページ追加
+  marginRatio: number | null;               // 信用倍率
+  // RS（TOPIX比相対強度）
+  rs3m: number | null;                      // 3ヶ月騰落率 - TOPIX3ヶ月騰落率
+  rs6m: number | null;                      // 6ヶ月騰落率 - TOPIX6ヶ月騰落率
 }
 
 // ────────────────────────────────────────────────
@@ -140,6 +145,12 @@ interface StockDetail {
   salesGrowthRate: number | null;
   eps: number | null;
   epsGrowthRate: number | null;
+  marginRatio: number | null; // 信用倍率
+}
+
+interface MonthlyPrice {
+  date: string;
+  close: number;
 }
 
 async function scrapeStockDetail(browser: Browser, code: string): Promise<StockDetail> {
@@ -196,7 +207,30 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
         }
       }
 
-      return { volumeText, tradingText, capText, bizRows };
+      // ── 信用倍率（基本情報テーブル）──
+      let marginRatioText = "";
+      for (const t of tables) {
+        const rows = t.querySelectorAll("tr");
+        for (const tr of rows) {
+          const ths = tr.querySelectorAll("th");
+          for (const th of ths) {
+            if (th.textContent?.includes("信用倍率")) {
+              const tds = tr.querySelectorAll("td");
+              // 同じtr内のtdを探す
+              if (tds.length > 0) {
+                marginRatioText = tds[tds.length - 1]?.textContent?.trim() ?? "";
+              } else {
+                // 次のtdを兄弟要素から探す
+                const next = th.nextElementSibling;
+                if (next) marginRatioText = next.textContent?.trim() ?? "";
+              }
+            }
+          }
+        }
+        if (marginRatioText) break;
+      }
+
+      return { volumeText, tradingText, capText, bizRows, marginRatioText };
     });
 
     // ── 業績パース ──
@@ -229,12 +263,73 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
       salesGrowthRate,
       eps,
       epsGrowthRate,
+      marginRatio: parseNumber(detail.marginRatioText),
     };
   } catch {
-    return { volume: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null };
+    return { volume: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null, marginRatio: null };
   } finally {
     await ctx.close();
   }
+}
+
+// ────────────────────────────────────────────────
+// 月足ページ: 過去株価（RS計算用）
+// ────────────────────────────────────────────────
+
+async function scrapeMonthlyPrices(browser: Browser, code: string): Promise<MonthlyPrice[]> {
+  const ctx = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  });
+  const page = await ctx.newPage();
+  try {
+    await page.goto(`https://kabutan.jp/stock/kabuka?code=${code}&ashi=mon`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(500);
+
+    const prices = await page.evaluate(() => {
+      const result: { date: string; close: number }[] = [];
+      const tables = document.querySelectorAll("table");
+      for (const t of tables) {
+        const rows = Array.from(t.querySelectorAll("tr"));
+        if (rows.length < 2) continue;
+
+        // ヘッダ行から「終値」の列インデックスを取得
+        const headerCells = Array.from(rows[0].querySelectorAll("th, td")).map(c => c.textContent?.trim() ?? "");
+        const closeIdx = headerCells.findIndex(h => h.includes("終値"));
+        if (closeIdx < 0) continue;
+
+        for (let i = 1; i < rows.length; i++) {
+          const dateEl = rows[i].querySelector("th");
+          const tds = rows[i].querySelectorAll("td");
+          if (!dateEl || tds.length === 0) continue;
+          const dateText = dateEl.textContent?.trim() ?? "";
+          // 終値のインデックス（thが1列あるのでtdのインデックスはcloseIdx-1）
+          const tdIdx = closeIdx - (dateEl ? 1 : 0);
+          const closeText = tds[tdIdx]?.textContent?.trim().replace(/,/g, "") ?? "";
+          const close = parseFloat(closeText);
+          if (dateText && !isNaN(close)) result.push({ date: dateText, close });
+        }
+        if (result.length > 0) break;
+      }
+      return result;
+    });
+    return prices;
+  } catch {
+    return [];
+  } finally {
+    await ctx.close();
+  }
+}
+
+/** 月足配列（新しい順）からN ヶ月前比騰落率(%)を計算 */
+function calcReturn(prices: MonthlyPrice[], months: number): number | null {
+  if (prices.length <= months) return null;
+  const current = prices[0].close;
+  const past = prices[months].close;
+  if (!past) return null;
+  return ((current - past) / past) * 100;
 }
 
 // ────────────────────────────────────────────────
@@ -387,19 +482,31 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
     const listItems = await scrapeListPage(browser, 1);
     console.log(`[scraper] 一覧取得: ${listItems.length}件`);
 
-    // 2. 各銘柄の個別ページを取得（並列5件ずつ）
+    // 2. TOPIX月足を一度だけ取得（RS計算基準）
+    const topixPrices = await scrapeMonthlyPrices(browser, "0010");
+    const topix3m = calcReturn(topixPrices, 3);
+    const topix6m = calcReturn(topixPrices, 6);
+    console.log(`[scraper] TOPIX 3M: ${topix3m?.toFixed(1)}%, 6M: ${topix6m?.toFixed(1)}%`);
+
+    // 3. 各銘柄の個別ページを取得（並列5件ずつ）
     const results: ScrapedStock[] = [];
     const CONCURRENCY = 5;
 
     for (let i = 0; i < listItems.length; i += CONCURRENCY) {
       const chunk = listItems.slice(i, i + CONCURRENCY);
-      // 個別ページと財務ページを並列取得
-      const [details, finances] = await Promise.all([
+      // 個別ページ・財務ページ・月足を並列取得
+      const [details, finances, monthlyPricesList] = await Promise.all([
         Promise.all(chunk.map(item => scrapeStockDetail(browser, item.code))),
         Promise.all(chunk.map(item => scrapeFinance(browser, item.code))),
+        Promise.all(chunk.map(item => scrapeMonthlyPrices(browser, item.code))),
       ]);
       for (let j = 0; j < chunk.length; j++) {
-        results.push({ ...chunk[j], ...details[j], ...finances[j] });
+        const prices = monthlyPricesList[j];
+        const stock3m = calcReturn(prices, 3);
+        const stock6m = calcReturn(prices, 6);
+        const rs3m = topix3m !== null && stock3m !== null ? stock3m - topix3m : null;
+        const rs6m = topix6m !== null && stock6m !== null ? stock6m - topix6m : null;
+        results.push({ ...chunk[j], ...details[j], ...finances[j], rs3m, rs6m });
       }
       if (i + CONCURRENCY < listItems.length) {
         await new Promise(r => setTimeout(r, 500));

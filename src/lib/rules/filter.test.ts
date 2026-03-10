@@ -223,6 +223,47 @@ describe("除外条件: 年次EPS連続減少", () => {
 });
 
 // ────────────────────────────────────────────────
+// L条件: RS（TOPIX比相対強度）
+// ────────────────────────────────────────────────
+
+describe("スコア: RS・信用倍率", () => {
+  // 3M・6M共にTOPIXアウトパフォーム → +8
+  it("RS 3M・6M共にプラス → +8加点", () => {
+    const noRs = filterStock({ ...base });
+    const withRs = filterStock({ ...base, rs3m: 5, rs6m: 10 });
+    expect(withRs.score - noRs.score).toBe(8);
+  });
+
+  // 片方のみプラス → +4
+  it("RS 3Mのみプラス → +4加点", () => {
+    const noRs = filterStock({ ...base });
+    const withRs = filterStock({ ...base, rs3m: 5, rs6m: -2 });
+    expect(withRs.score - noRs.score).toBe(4);
+  });
+
+  // 両方マイナス → 加点なし
+  it("RS 両方マイナス → 加点なし", () => {
+    const noRs = filterStock({ ...base });
+    const withRs = filterStock({ ...base, rs3m: -3, rs6m: -5 });
+    expect(withRs.score - noRs.score).toBe(0);
+  });
+
+  // 信用倍率 1.5未満 → +3
+  it("信用倍率1.5未満 → +3加点", () => {
+    const noMr = filterStock({ ...base });
+    const withMr = filterStock({ ...base, marginRatio: 1.2 });
+    expect(withMr.score - noMr.score).toBe(3);
+  });
+
+  // 信用倍率 1.5以上 → 加点なし
+  it("信用倍率1.5以上 → 加点なし", () => {
+    const noMr = filterStock({ ...base });
+    const withMr = filterStock({ ...base, marginRatio: 3.0 });
+    expect(withMr.score - noMr.score).toBe(0);
+  });
+});
+
+// ────────────────────────────────────────────────
 // スコア上限・複合ケース
 // ────────────────────────────────────────────────
 

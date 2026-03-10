@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx playwright:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm run:*)",
+      "Bash(npx tsc:*)",
+      "Read(//Users/kawai/.claude/**)",
+      "Read(//Users/kawai/.config/claude/**)",
+      "Bash(python3 -m json.tool)",
+      "WebSearch",
+      "Bash(npx vitest:*)",
+      "WebFetch(domain:kabutan.jp)"
+    ]
+  }
+}

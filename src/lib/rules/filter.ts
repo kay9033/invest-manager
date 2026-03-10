@@ -16,6 +16,9 @@ export interface ScanData {
   roe?: number | null;
   annualEpsGrowths?: (number | null)[];      // 年次EPS前期比成長率の配列（古い順）
   operatingMarginImproving?: boolean | null; // 営業利益率が改善傾向か
+  marginRatio?: number | null;               // 信用倍率
+  rs3m?: number | null;                      // 3ヶ月RS（TOPIX比超過リターン）
+  rs6m?: number | null;                      // 6ヶ月RS（TOPIX比超過リターン）
 }
 
 export interface FilterResult {
@@ -163,6 +166,35 @@ export function filterStock(scan: ScanData): FilterResult {
   if (scan.operatingMarginImproving === true) {
     score += 5;
     reasons.push("営業利益率改善傾向（A条件）");
+  }
+
+  // 10. L条件: TOPIX比相対強度（RS）
+  const rs3mPos = scan.rs3m !== null && scan.rs3m !== undefined && scan.rs3m > 0;
+  const rs6mPos = scan.rs6m !== null && scan.rs6m !== undefined && scan.rs6m > 0;
+  if (rs3mPos && rs6mPos) {
+    score += 8;
+    reasons.push(`RS良好 - TOPIX比 3M:+${scan.rs3m!.toFixed(1)}%, 6M:+${scan.rs6m!.toFixed(1)}%（L条件クリア）`);
+  } else if (rs3mPos || rs6mPos) {
+    score += 4;
+    const rs3mStr = scan.rs3m != null ? `3M:${scan.rs3m.toFixed(1)}%` : "";
+    const rs6mStr = scan.rs6m != null ? `6M:${scan.rs6m.toFixed(1)}%` : "";
+    reasons.push(`RS部分通過 - TOPIX比 ${[rs3mStr, rs6mStr].filter(Boolean).join(", ")}`);
+  } else if (scan.rs3m != null || scan.rs6m != null) {
+    const rs3mStr = scan.rs3m != null ? `3M:${scan.rs3m.toFixed(1)}%` : "";
+    const rs6mStr = scan.rs6m != null ? `6M:${scan.rs6m.toFixed(1)}%` : "";
+    reasons.push(`RS劣位 - TOPIX比 ${[rs3mStr, rs6mStr].filter(Boolean).join(", ")}（L条件注意）`);
+  }
+
+  // 11. I条件: 信用倍率（低いほど売り圧力が少ない）
+  if (scan.marginRatio != null) {
+    if (scan.marginRatio < 1.5) {
+      score += 3;
+      reasons.push(`信用倍率${scan.marginRatio.toFixed(2)}倍 - 低水準（I条件良好）`);
+    } else if (scan.marginRatio >= 5) {
+      reasons.push(`信用倍率${scan.marginRatio.toFixed(2)}倍 - 高水準注意（売り圧力リスク）`);
+    } else {
+      reasons.push(`信用倍率${scan.marginRatio.toFixed(2)}倍`);
+    }
   }
 
   // スコアを0-100に正規化
