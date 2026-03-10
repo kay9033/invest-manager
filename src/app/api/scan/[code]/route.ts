@@ -23,7 +23,12 @@ export async function GET(
     .get();
 
   return NextResponse.json({
-    stock,
+    stock: {
+      ...stock,
+      annualEpsGrowths: stock.annualEpsGrowths
+        ? (JSON.parse(stock.annualEpsGrowths) as number[])
+        : null,
+    },
     scan: scan
       ? {
           ...scan,

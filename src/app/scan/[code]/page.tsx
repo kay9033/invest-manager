@@ -12,6 +12,14 @@ interface StockDetail {
   eps: number | null;
   epsGrowthRate: number | null;
   marketCap: number | null;
+  roe: number | null;
+  marginRatio: number | null;
+  hasUpwardRevision: boolean | null;
+  epsAccelerating: boolean | null;
+  salesAccelerating: boolean | null;
+  operatingMarginImproving: boolean | null;
+  hasInstitutionalIncrease: boolean | null;
+  annualEpsGrowths: number[] | null;
 }
 
 interface ScanDetail {
@@ -24,11 +32,22 @@ interface ScanDetail {
   reasons: string[];
   rs3m: number | null;
   rs6m: number | null;
+  volumeRatio: number | null;
 }
 
 interface DetailResponse {
   stock: StockDetail;
   scan: ScanDetail | null;
+}
+
+function Val({ v, fmt }: { v: unknown; fmt?: (v: NonNullable<unknown>) => string }) {
+  if (v === null || v === undefined) {
+    return <span className="text-gray-600 text-xs">未取得</span>;
+  }
+  if (typeof v === "boolean") {
+    return <span className={v ? "text-emerald-400" : "text-gray-400"}>{v ? "あり" : "なし"}</span>;
+  }
+  return <span className="text-white">{fmt ? fmt(v) : String(v)}</span>;
 }
 
 export default function ScanDetailPage() {
@@ -55,8 +74,16 @@ export default function ScanDetailPage() {
   const { stock, scan } = data;
   const kabutanUrl = `https://kabutan.jp/stock/?code=${code}`;
 
-  const passedReasons = scan?.reasons.filter((r) => !r.includes("注意") && !r.includes("なし") && !r.includes("劣位") && !r.includes("減少") && !r.includes("減益") && !r.includes("減収")) ?? [];
-  const warnReasons = scan?.reasons.filter((r) => r.includes("注意") || r.includes("なし") || r.includes("劣位") || r.includes("減少") || r.includes("減益") || r.includes("減収")) ?? [];
+  const positiveReasons = scan?.reasons.filter((r) =>
+    !r.includes("注意") && !r.includes("なし") && !r.includes("劣位") &&
+    !r.includes("減少") && !r.includes("減益") && !r.includes("減収") &&
+    !r.includes("データなし")
+  ) ?? [];
+  const warnReasons = scan?.reasons.filter((r) =>
+    r.includes("注意") || r.includes("劣位") || r.includes("減少") ||
+    r.includes("減益") || r.includes("減収")
+  ) ?? [];
+  const missingReasons = scan?.reasons.filter((r) => r.includes("データなし")) ?? [];
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -72,11 +99,9 @@ export default function ScanDetailPage() {
               </span>
             )}
           </div>
-          {scan && (
-            <p className="mt-1 text-sm text-gray-500">スキャン日: {scan.scanDate}</p>
-          )}
+          {scan && <p className="mt-1 text-sm text-gray-500">スキャン日: {scan.scanDate}</p>}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-3">
           <a
             href={kabutanUrl}
             target="_blank"
@@ -85,25 +110,21 @@ export default function ScanDetailPage() {
           >
             カブタンで見る →
           </a>
-          <a href="/scan" className="text-sm text-gray-500 hover:text-white self-center ml-2">
-            ← 戻る
-          </a>
+          <a href="/scan" className="text-sm text-gray-500 hover:text-white">← 戻る</a>
         </div>
       </div>
 
-      {/* スコア */}
+      {/* フィルター結果 */}
       {scan && (
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-white">フィルター結果</h2>
             <div className="flex items-center gap-3">
-              <span
-                className={`text-sm font-medium px-2.5 py-1 rounded-full ${
-                  scan.passed
-                    ? "bg-emerald-900/50 text-emerald-400 border border-emerald-800"
-                    : "bg-red-900/50 text-red-400 border border-red-800"
-                }`}
-              >
+              <span className={`text-sm font-medium px-2.5 py-1 rounded-full ${
+                scan.passed
+                  ? "bg-emerald-900/50 text-emerald-400 border border-emerald-800"
+                  : "bg-red-900/50 text-red-400 border border-red-800"
+              }`}>
                 {scan.passed ? "通過" : "不通過"}
               </span>
               <span className="text-2xl font-bold text-white">
@@ -113,7 +134,6 @@ export default function ScanDetailPage() {
             </div>
           </div>
 
-          {/* スコアバー */}
           {scan.score != null && (
             <div className="w-full bg-gray-800 rounded-full h-2">
               <div
@@ -125,12 +145,11 @@ export default function ScanDetailPage() {
             </div>
           )}
 
-          {/* 判定理由 */}
-          <div className="space-y-2">
-            {passedReasons.map((r, i) => (
+          <div className="space-y-1.5">
+            {positiveReasons.map((r, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-emerald-400 mt-0.5 shrink-0">✓</span>
-                <span className="text-gray-300">{r}</span>
+                <span className="text-gray-200">{r}</span>
               </div>
             ))}
             {warnReasons.map((r, i) => (
@@ -139,68 +158,75 @@ export default function ScanDetailPage() {
                 <span className="text-gray-400">{r}</span>
               </div>
             ))}
+            {missingReasons.map((r, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="text-gray-600 mt-0.5 shrink-0">?</span>
+                <span className="text-gray-600">{r}</span>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* 基本情報 */}
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-        <h2 className="text-lg font-semibold text-white mb-4">基本情報</h2>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-          <div>
-            <dt className="text-gray-500">株価</dt>
-            <dd className="text-white font-medium">
-              {scan?.closePrice != null ? `${scan.closePrice.toLocaleString()}円` : "-"}
-            </dd>
+      {/* スクレイピングデータ確認 */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+        <h2 className="text-lg font-semibold text-white">
+          取得データ確認
+          <span className="ml-2 text-xs text-gray-500 font-normal">「未取得」はスクレイピング失敗または非対応</span>
+        </h2>
+
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">価格・流動性</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <Row label="株価" v={scan?.closePrice} fmt={(v) => `${(v as number).toLocaleString()}円`} />
+            <Row label="売買代金" v={scan?.tradingValue} fmt={(v) => `${((v as number) / 1e8).toFixed(1)}億円`} />
+            <Row label="出来高比率(25日)" v={scan?.volumeRatio} fmt={(v) => `${(v as number).toFixed(0)}%`} />
+            <Row label="時価総額" v={stock.marketCap} fmt={(v) => `${((v as number) / 1e8).toFixed(0)}億円`} />
           </div>
-          <div>
-            <dt className="text-gray-500">売買代金</dt>
-            <dd className="text-white font-medium">
-              {scan?.tradingValue != null
-                ? `${(scan.tradingValue / 1e8).toFixed(1)}億円`
-                : "-"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-gray-500">時価総額</dt>
-            <dd className="text-white font-medium">
-              {stock.marketCap != null ? `${(stock.marketCap / 1e8).toFixed(0)}億円` : "-"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-gray-500">EPS成長率</dt>
-            <dd className="text-white font-medium">
-              {stock.epsGrowthRate != null ? `${stock.epsGrowthRate.toFixed(1)}%` : "-"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-gray-500">売上成長率</dt>
-            <dd className="text-white font-medium">
-              {stock.salesGrowthRate != null ? `${stock.salesGrowthRate.toFixed(1)}%` : "-"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-gray-500">RS (TOPIX比)</dt>
-            <dd className="text-white font-medium">
-              {scan?.rs3m != null ? (
-                <span>
-                  3M: <span className={scan.rs3m >= 0 ? "text-emerald-400" : "text-red-400"}>
-                    {scan.rs3m > 0 ? "+" : ""}{scan.rs3m.toFixed(1)}%
-                  </span>
-                  {scan.rs6m != null && (
-                    <>
-                      {" / "}6M:{" "}
-                      <span className={scan.rs6m >= 0 ? "text-emerald-400" : "text-red-400"}>
-                        {scan.rs6m > 0 ? "+" : ""}{scan.rs6m.toFixed(1)}%
-                      </span>
-                    </>
-                  )}
+
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium pt-2">業績（C/A条件）</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <Row label="EPS成長率" v={stock.epsGrowthRate} fmt={(v) => `${(v as number).toFixed(1)}%`} />
+            <Row label="EPS加速" v={stock.epsAccelerating} />
+            <Row label="売上成長率" v={stock.salesGrowthRate} fmt={(v) => `${(v as number).toFixed(1)}%`} />
+            <Row label="売上加速" v={stock.salesAccelerating} />
+            <Row label="ROE" v={stock.roe} fmt={(v) => `${(v as number).toFixed(1)}%`} />
+            <Row label="営業利益率改善" v={stock.operatingMarginImproving} />
+            <Row label="上方修正" v={stock.hasUpwardRevision} />
+            <div className="col-span-2">
+              <span className="text-gray-500">年次EPS成長率:</span>{" "}
+              {stock.annualEpsGrowths?.length ? (
+                <span className="text-white">
+                  {stock.annualEpsGrowths.map((g, i) => (
+                    <span key={i} className={g >= 25 ? "text-emerald-400" : g < 0 ? "text-red-400" : "text-gray-300"}>
+                      {g > 0 ? "+" : ""}{g.toFixed(1)}%{i < stock.annualEpsGrowths!.length - 1 ? " → " : ""}
+                    </span>
+                  ))}
                 </span>
-              ) : "-"}
-            </dd>
+              ) : (
+                <span className="text-gray-600 text-xs">未取得</span>
+              )}
+            </div>
           </div>
-        </dl>
+
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium pt-2">市場優位性（L/I条件）</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <Row label="RS 3ヶ月(TOPIX比)" v={scan?.rs3m} fmt={(v) => `${(v as number) > 0 ? "+" : ""}${(v as number).toFixed(1)}%`} />
+            <Row label="RS 6ヶ月(TOPIX比)" v={scan?.rs6m} fmt={(v) => `${(v as number) > 0 ? "+" : ""}${(v as number).toFixed(1)}%`} />
+            <Row label="信用倍率" v={stock.marginRatio} fmt={(v) => `${(v as number).toFixed(2)}倍`} />
+            <Row label="大株主増加(IRBANK)" v={stock.hasInstitutionalIncrease} />
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, v, fmt }: { label: string; v: unknown; fmt?: (v: NonNullable<unknown>) => string }) {
+  return (
+    <div>
+      <span className="text-gray-500">{label}: </span>
+      <Val v={v} fmt={fmt} />
     </div>
   );
 }

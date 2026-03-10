@@ -11,6 +11,15 @@ export const stocks = sqliteTable("stocks", {
   eps: real("eps"),
   epsGrowthRate: real("eps_growth_rate"),
   marketCap: real("market_cap"),
+  // 財務ページ由来
+  roe: real("roe"),
+  marginRatio: real("margin_ratio"),
+  hasUpwardRevision: integer("has_upward_revision", { mode: "boolean" }),
+  epsAccelerating: integer("eps_accelerating", { mode: "boolean" }),
+  salesAccelerating: integer("sales_accelerating", { mode: "boolean" }),
+  operatingMarginImproving: integer("operating_margin_improving", { mode: "boolean" }),
+  hasInstitutionalIncrease: integer("has_institutional_increase", { mode: "boolean" }),
+  annualEpsGrowths: text("annual_eps_growths"), // JSON配列
   createdAt: text("created_at").default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").default(sql`(datetime('now'))`),
 });

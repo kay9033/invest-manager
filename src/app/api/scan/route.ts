@@ -52,13 +52,33 @@ export async function POST() {
         .where(eq(stocks.code, item.code))
         .get();
 
+      const financeFields = {
+        sales: item.sales ?? null,
+        salesGrowthRate: item.salesGrowthRate ?? null,
+        eps: item.eps ?? null,
+        epsGrowthRate: item.epsGrowthRate ?? null,
+        marketCap: item.marketCap ?? null,
+        roe: item.roe ?? null,
+        marginRatio: item.marginRatio ?? null,
+        hasUpwardRevision: item.hasUpwardRevision ?? null,
+        epsAccelerating: item.epsAccelerating ?? null,
+        salesAccelerating: item.salesAccelerating ?? null,
+        operatingMarginImproving: item.operatingMarginImproving ?? null,
+        hasInstitutionalIncrease: item.hasInstitutionalIncrease ?? null,
+        annualEpsGrowths: item.annualEpsGrowths?.length
+          ? JSON.stringify(item.annualEpsGrowths)
+          : null,
+        updatedAt: new Date().toISOString(),
+      };
+
       if (!existing) {
         db.insert(stocks)
-          .values({
-            code: item.code,
-            name: item.name,
-            market: item.market || null,
-          })
+          .values({ code: item.code, name: item.name, market: item.market || null, ...financeFields })
+          .run();
+      } else {
+        db.update(stocks)
+          .set({ name: item.name, market: item.market || null, ...financeFields })
+          .where(eq(stocks.code, item.code))
           .run();
       }
 
