@@ -14,6 +14,7 @@ interface StockTableProps<T extends Record<string, unknown>> {
   data: T[];
   columns: StockColumn<T>[];
   emptyMessage?: string;
+  onRowClick?: (row: T) => void;
 }
 
 type SortDir = "asc" | "desc";
@@ -22,6 +23,7 @@ export default function StockTable<T extends Record<string, unknown>>({
   data,
   columns,
   emptyMessage = "データがありません",
+  onRowClick,
 }: StockTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -86,7 +88,8 @@ export default function StockTable<T extends Record<string, unknown>>({
           {sortedData.map((row, idx) => (
             <tr
               key={idx}
-              className="bg-gray-950 hover:bg-gray-900 transition-colors"
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={`bg-gray-950 hover:bg-gray-900 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
             >
               {columns.map((col) => {
                 const key = col.key as string;

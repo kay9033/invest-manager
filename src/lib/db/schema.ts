@@ -29,6 +29,9 @@ export const scans = sqliteTable("scans", {
   tradingValue: real("trading_value"),
   rs3m: real("rs3m"),
   rs6m: real("rs6m"),
+  score: integer("score"),
+  reasons: text("reasons"), // JSON配列
+  passed: integer("passed", { mode: "boolean" }).default(false),
   createdAt: text("created_at").default(sql`(datetime('now'))`),
 });
 

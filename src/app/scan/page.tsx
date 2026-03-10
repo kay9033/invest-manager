@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import StockTable, { StockColumn } from "@/components/StockTable";
 
 interface ScanResult {
@@ -86,6 +87,7 @@ export default function ScanPage() {
   const [adding, setAdding] = useState<Record<string, boolean>>({});
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState<ScanProgressState | null>(null);
+  const router = useRouter();
 
   async function handleScan() {
     setLoading(true);
@@ -261,11 +263,13 @@ export default function ScanPage() {
           <div>
             <h2 className="text-lg font-semibold text-white mb-3">
               全スキャン結果
+              <span className="ml-2 text-sm text-gray-500 font-normal">（行クリックで詳細）</span>
             </h2>
             <StockTable
               data={scanResult.results as RowData[]}
               columns={columns}
               emptyMessage="スキャン結果がありません"
+              onRowClick={(row) => router.push(`/scan/${row.code}`)}
             />
           </div>
         </div>

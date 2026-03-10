@@ -32,18 +32,6 @@ export async function POST() {
           .run();
       }
 
-      // scansテーブルに挿入
-      db.insert(scans)
-        .values({
-          code: item.code,
-          scanDate: today,
-          closePrice: item.closePrice,
-          volume: item.volume,
-          tradingValue: item.tradingValue,
-          isNewHigh: true,
-        })
-        .run();
-
       // フィルタリング実行（個別ページ・財務ページから取得した最新データを優先）
       const scanData: ScanData = {
         code: item.code,
@@ -68,6 +56,21 @@ export async function POST() {
       };
 
       const filterResult = filterStock(scanData);
+
+      // scansテーブルに挿入（フィルター結果も保存）
+      db.insert(scans)
+        .values({
+          code: item.code,
+          scanDate: today,
+          closePrice: item.closePrice,
+          volume: item.volume,
+          tradingValue: item.tradingValue,
+          isNewHigh: true,
+          score: filterResult.score,
+          reasons: JSON.stringify(filterResult.reasons),
+          passed: filterResult.passed,
+        })
+        .run();
 
       results.push({
         code: item.code,
