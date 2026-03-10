@@ -136,15 +136,15 @@ describe("スコアリング: 加点", () => {
     expect(withEps.score - noEps.score).toBe(0);
   });
 
-  // 売上成長率20%以上: +10
-  it("売上成長率20%以上 → +10加点", () => {
+  // 売上成長率25%以上: +10
+  it("売上成長率25%以上 → +10加点", () => {
     const noSgr = filterStock({ ...base });
-    const withSgr = filterStock({ ...base, salesGrowthRate: 20 });
+    const withSgr = filterStock({ ...base, salesGrowthRate: 25 });
     expect(withSgr.score - noSgr.score).toBe(10);
   });
 
-  // 売上成長率0〜19%: +3
-  it("売上成長率0〜19% → +3加点", () => {
+  // 売上成長率0〜24%: +3
+  it("売上成長率0〜24% → +3加点", () => {
     const noSgr = filterStock({ ...base });
     const withSgr = filterStock({ ...base, salesGrowthRate: 10 });
     expect(withSgr.score - noSgr.score).toBe(3);
@@ -155,6 +155,27 @@ describe("スコアリング: 加点", () => {
     const noSgr = filterStock({ ...base });
     const withSgr = filterStock({ ...base, salesGrowthRate: -5 });
     expect(withSgr.score - noSgr.score).toBe(0);
+  });
+
+  // ROE 20%以上: +8（17%で+5、20%で+3追加）
+  it("ROE 20%以上 → +8加点", () => {
+    const noRoe = filterStock({ ...base });
+    const withRoe = filterStock({ ...base, roe: 20 });
+    expect(withRoe.score - noRoe.score).toBe(8);
+  });
+
+  // ROE 17%以上20%未満: +5
+  it("ROE 17%以上20%未満 → +5加点", () => {
+    const noRoe = filterStock({ ...base });
+    const withRoe = filterStock({ ...base, roe: 17 });
+    expect(withRoe.score - noRoe.score).toBe(5);
+  });
+
+  // ROE 17%未満: +0
+  it("ROE 17%未満 → 加点なし", () => {
+    const noRoe = filterStock({ ...base });
+    const withRoe = filterStock({ ...base, roe: 10 });
+    expect(withRoe.score - noRoe.score).toBe(0);
   });
 });
 

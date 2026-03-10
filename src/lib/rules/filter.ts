@@ -100,12 +100,12 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push("EPS減速注意（成長率が鈍化）");
   }
 
-  // 6. 売上高成長率チェック（CLAUDE.md優先項目: +20%以上）
+  // 6. 売上高成長率チェック（C条件: +25%以上）
   if (scan.salesGrowthRate != null) {
     const sgr = scan.salesGrowthRate!;
-    if (sgr >= 20) {
+    if (sgr >= 25) {
       score += 10;
-      reasons.push(`売上成長率${sgr.toFixed(1)}% - 優先条件クリア`);
+      reasons.push(`売上成長率${sgr.toFixed(1)}% - 優先条件クリア（25%以上）`);
     } else if (sgr >= 0) {
       score += 3;
       reasons.push(`売上成長率${sgr.toFixed(1)}% - 増収`);
@@ -126,14 +126,14 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push("直近で上方修正あり - 重要ポジティブ材料");
   }
 
-  // 8. ROEチェック（質の高い利益成長）
+  // 8. ROEチェック（A条件: 17%以上+5, 20%以上+3追加）
   if (scan.roe != null) {
     if (scan.roe >= 20) {
-      score += 5;
+      score += 8; // 17%以上+5 + 20%以上+3
       reasons.push(`ROE${scan.roe.toFixed(1)}% - 高収益（20%以上）`);
-    } else if (scan.roe >= 15) {
-      score += 3;
-      reasons.push(`ROE${scan.roe.toFixed(1)}% - 良好（15%以上）`);
+    } else if (scan.roe >= 17) {
+      score += 5;
+      reasons.push(`ROE${scan.roe.toFixed(1)}% - 良好（17%以上）`);
     } else if (scan.roe > 0) {
       reasons.push(`ROE${scan.roe.toFixed(1)}%`);
     }
