@@ -5,6 +5,36 @@ import db from "@/lib/db";
 import { stocks, scans } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
+export async function GET() {
+  const today = new Date().toISOString().split("T")[0];
+  const rows = db
+    .select({
+      code: scans.code,
+      name: stocks.name,
+      closePrice: scans.closePrice,
+      volume: scans.volume,
+      tradingValue: scans.tradingValue,
+      score: scans.score,
+      passed: scans.passed,
+      reasons: scans.reasons,
+    })
+    .from(scans)
+    .innerJoin(stocks, eq(scans.code, stocks.code))
+    .where(eq(scans.scanDate, today))
+    .all();
+
+  const results = rows.map((r) => ({
+    ...r,
+    reasons: r.reasons ? (JSON.parse(r.reasons) as string[]) : [],
+  }));
+
+  return NextResponse.json({
+    scanned: results.length,
+    passed: results.filter((r) => r.passed).length,
+    results,
+  });
+}
+
 export async function POST() {
   try {
     const scraped = await scrapeKabutan();

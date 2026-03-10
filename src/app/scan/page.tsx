@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import StockTable, { StockColumn } from "@/components/StockTable";
 
@@ -88,6 +88,16 @@ export default function ScanPage() {
   const [added, setAdded] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState<ScanProgressState | null>(null);
   const router = useRouter();
+
+  // ページロード時に当日のスキャン結果をDBから復元
+  useEffect(() => {
+    fetch("/api/scan")
+      .then((r) => r.json())
+      .then((data: ScanResponse) => {
+        if (data.results?.length > 0) setScanResult(data);
+      })
+      .catch(() => {});
+  }, []);
 
   async function handleScan() {
     setLoading(true);
