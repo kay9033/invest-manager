@@ -19,6 +19,11 @@ export interface ScrapedStock {
   salesGrowthRate: number | null;
   eps: number | null;
   epsGrowthRate: number | null;
+  // 財務ページから追加取得
+  epsAccelerating: boolean | null;    // EPS成長率が加速しているか
+  salesAccelerating: boolean | null;  // 売上成長率が加速しているか
+  hasUpwardRevision: boolean;         // 直近で上方修正があったか
+  roe: number | null;                 // ROE（直近期）
 }
 
 // ────────────────────────────────────────────────
@@ -231,6 +236,117 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
 }
 
 // ────────────────────────────────────────────────
+// 財務ページ: EPS加速・売上加速・上方修正・ROE
+// ────────────────────────────────────────────────
+
+interface FinanceDetail {
+  epsAccelerating: boolean | null;
+  salesAccelerating: boolean | null;
+  hasUpwardRevision: boolean;
+  roe: number | null;
+}
+
+/** 成長率の配列から加速しているか判定（直近の成長率 > 前の成長率）*/
+function isAccelerating(values: (number | null)[]): boolean | null {
+  const valid = values.filter((v): v is number => v !== null && isFinite(v));
+  if (valid.length < 3) return null;
+  const rates: number[] = [];
+  for (let i = 1; i < valid.length; i++) {
+    if (valid[i - 1] === 0) continue;
+    rates.push(((valid[i] - valid[i - 1]) / Math.abs(valid[i - 1])) * 100);
+  }
+  if (rates.length < 2) return null;
+  // 直近の成長率が前の成長率より高いか
+  return rates[rates.length - 1] > rates[rates.length - 2];
+}
+
+export async function scrapeFinance(browser: Browser, code: string): Promise<FinanceDetail> {
+  const ctx = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  });
+  const page = await ctx.newPage();
+
+  try {
+    await page.goto(`https://kabutan.jp/stock/finance?code=${code}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(800);
+
+    const raw = await page.evaluate(() => {
+      const tables = document.querySelectorAll("table");
+
+      // ── 年次業績テーブル (table[3]): 売上高・1株益の推移 ──
+      const t3 = tables[3];
+      const annualRows: { label: string; values: string[] }[] = [];
+      if (t3) {
+        for (const tr of t3.querySelectorAll("tr")) {
+          const th = tr.querySelector("th");
+          const label = th?.textContent?.trim() ?? "";
+          const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
+          if ((label.includes("単") || label.includes("連")) && !label.includes("予") && tds.length >= 5) {
+            annualRows.push({ label, values: tds });
+          }
+        }
+      }
+
+      // ── 業績修正テーブル (table[4]): 修正方向を検出 ──
+      const t4 = tables[4];
+      const revisionTexts: string[] = [];
+      if (t4) {
+        for (const td of t4.querySelectorAll("td")) {
+          const text = td.textContent?.trim() ?? "";
+          if (text.includes("上") || text.includes("下")) revisionTexts.push(text);
+        }
+      }
+
+      // ── 経営指標テーブル (table[12]): ROE ──
+      // headers: 決算期 | 売上高 | 営業益 | 売上営業利益率 | ROE | ROA | 総資産回転率 | 修正1株益
+      const t12 = tables[12];
+      const kpiRows: { label: string; values: string[] }[] = [];
+      if (t12) {
+        for (const tr of t12.querySelectorAll("tr")) {
+          const th = tr.querySelector("th");
+          const label = th?.textContent?.trim() ?? "";
+          const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
+          if ((label.includes("単") || label.includes("連")) && !label.includes("予") && tds.length >= 4) {
+            kpiRows.push({ label, values: tds });
+          }
+        }
+      }
+
+      return { annualRows, revisionTexts, kpiRows };
+    });
+
+    // ── 年次EPSと売上の配列を構築 ──
+    // tds: [売上高(0), 営業益(1), 経常益(2), 最終益(3), 修正1株益(4), 修正1株配(5), 発表日(6)]
+    const annualEps = raw.annualRows.map(r => parseNumber(r.values[4] ?? ""));
+    const annualSales = raw.annualRows.map(r => parseNumber(r.values[0] ?? ""));
+
+    const epsAccelerating = isAccelerating(annualEps);
+    const salesAccelerating = isAccelerating(annualSales);
+
+    // ── 上方修正フラグ ──
+    // 修正方向セルに "上" が含まれるか確認
+    const hasUpwardRevision = raw.revisionTexts.some(t => t.includes("上") && !t.includes("修正方向"));
+
+    // ── ROE: kpiRowsの直近実績（最後の行）のindex[3] ──
+    // kpi headers: [売上高, 営業益, 売上営業利益率, ROE, ROA, ...]
+    let roe: number | null = null;
+    if (raw.kpiRows.length > 0) {
+      const latestKpi = raw.kpiRows[raw.kpiRows.length - 1];
+      roe = parseNumber(latestKpi.values[3] ?? ""); // ROE は index 3
+    }
+
+    return { epsAccelerating, salesAccelerating, hasUpwardRevision, roe };
+  } catch {
+    return { epsAccelerating: null, salesAccelerating: null, hasUpwardRevision: false, roe: null };
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ────────────────────────────────────────────────
 // メイン: 全銘柄スクレイプ
 // ────────────────────────────────────────────────
 
@@ -248,13 +364,14 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
 
     for (let i = 0; i < listItems.length; i += CONCURRENCY) {
       const chunk = listItems.slice(i, i + CONCURRENCY);
-      const details = await Promise.all(
-        chunk.map(item => scrapeStockDetail(browser, item.code))
-      );
+      // 個別ページと財務ページを並列取得
+      const [details, finances] = await Promise.all([
+        Promise.all(chunk.map(item => scrapeStockDetail(browser, item.code))),
+        Promise.all(chunk.map(item => scrapeFinance(browser, item.code))),
+      ]);
       for (let j = 0; j < chunk.length; j++) {
-        results.push({ ...chunk[j], ...details[j] });
+        results.push({ ...chunk[j], ...details[j], ...finances[j] });
       }
-      // サーバー負荷軽減のため少し待機
       if (i + CONCURRENCY < listItems.length) {
         await new Promise(r => setTimeout(r, 500));
       }

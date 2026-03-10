@@ -9,6 +9,11 @@ export interface ScanData {
   salesGrowthRate?: number | null;
   isNewHigh: boolean;
   volumeRatio?: number | null;
+  // 財務ページ由来
+  epsAccelerating?: boolean | null;
+  salesAccelerating?: boolean | null;
+  hasUpwardRevision?: boolean;
+  roe?: number | null;
 }
 
 export interface FilterResult {
@@ -74,17 +79,25 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push("出来高: データなし（要確認）");
   }
 
-  // 5. EPS成長率チェック（中小型株向け加点）
+  // 5. EPS成長率チェック（中小型株: 25%以上優先 / C&A利益の加速）
   if (scan.epsGrowthRate !== null) {
     if (scan.epsGrowthRate >= 25) {
       score += 10;
-      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 優良`);
+      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 優良（25%以上）`);
     } else if (scan.epsGrowthRate >= 0) {
       score += 3;
       reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 増益`);
     } else {
       reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 減益注意`);
     }
+  }
+
+  // 5b. EPS加速（C&A: 利益の加速）
+  if (scan.epsAccelerating === true) {
+    score += 8;
+    reasons.push("EPS加速中（直近期の成長率が前期を上回る）");
+  } else if (scan.epsAccelerating === false) {
+    reasons.push("EPS減速注意（成長率が鈍化）");
   }
 
   // 6. 売上高成長率チェック（CLAUDE.md優先項目: +20%以上）
@@ -98,6 +111,31 @@ export function filterStock(scan: ScanData): FilterResult {
       reasons.push(`売上成長率${sgr.toFixed(1)}% - 増収`);
     } else {
       reasons.push(`売上成長率${sgr.toFixed(1)}% - 減収注意`);
+    }
+  }
+
+  // 6b. 売上加速
+  if (scan.salesAccelerating === true) {
+    score += 5;
+    reasons.push("売上加速中（直近期の伸びが前期を上回る）");
+  }
+
+  // 7. 上方修正フラグ（大型株の重要カタリスト）
+  if (scan.hasUpwardRevision) {
+    score += 10;
+    reasons.push("直近で上方修正あり - 重要ポジティブ材料");
+  }
+
+  // 8. ROEチェック（質の高い利益成長）
+  if (scan.roe != null) {
+    if (scan.roe >= 20) {
+      score += 5;
+      reasons.push(`ROE${scan.roe.toFixed(1)}% - 高収益（20%以上）`);
+    } else if (scan.roe >= 15) {
+      score += 3;
+      reasons.push(`ROE${scan.roe.toFixed(1)}% - 良好（15%以上）`);
+    } else if (scan.roe > 0) {
+      reasons.push(`ROE${scan.roe.toFixed(1)}%`);
     }
   }
 
