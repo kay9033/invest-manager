@@ -14,6 +14,8 @@ export interface ScanData {
   salesAccelerating?: boolean | null;
   hasUpwardRevision?: boolean;
   roe?: number | null;
+  annualEpsGrowths?: (number | null)[];      // 年次EPS前期比成長率の配列（古い順）
+  operatingMarginImproving?: boolean | null; // 営業利益率が改善傾向か
 }
 
 export interface FilterResult {
@@ -100,6 +102,24 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push("EPS減速注意（成長率が鈍化）");
   }
 
+  // 5c. 年次EPS成長率チェック（A条件）
+  if (scan.annualEpsGrowths && scan.annualEpsGrowths.length >= 2) {
+    const valid = scan.annualEpsGrowths.filter((v): v is number => v !== null);
+    // 除外条件: 2期以上連続減少
+    if (valid.length >= 2 && valid.slice(-2).every(g => g < 0)) {
+      reasons.push(`年間EPS2期連続減少（${valid.slice(-2).map(g => g.toFixed(1)).join("%, ")}%）- 成長トレンド崩壊`);
+      return { passed: false, reasons, score };
+    }
+    // 加点: 3期連続+25%以上 → A条件クリア
+    if (valid.length >= 3 && valid.slice(-3).every(g => g >= 25)) {
+      score += 10;
+      reasons.push("年間EPS3期連続+25%以上（A条件クリア）");
+    } else if (valid.length >= 2 && valid.slice(-2).every(g => g >= 25)) {
+      score += 5;
+      reasons.push("年間EPS直近2期+25%以上");
+    }
+  }
+
   // 6. 売上高成長率チェック（C条件: +25%以上）
   if (scan.salesGrowthRate != null) {
     const sgr = scan.salesGrowthRate!;
@@ -137,6 +157,12 @@ export function filterStock(scan: ScanData): FilterResult {
     } else if (scan.roe > 0) {
       reasons.push(`ROE${scan.roe.toFixed(1)}%`);
     }
+  }
+
+  // 9. 営業利益率の改善傾向（A条件）
+  if (scan.operatingMarginImproving === true) {
+    score += 5;
+    reasons.push("営業利益率改善傾向（A条件）");
   }
 
   // スコアを0-100に正規化

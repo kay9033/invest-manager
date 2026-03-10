@@ -20,10 +20,12 @@ export interface ScrapedStock {
   eps: number | null;
   epsGrowthRate: number | null;
   // 財務ページから追加取得
-  epsAccelerating: boolean | null;    // EPS成長率が加速しているか
-  salesAccelerating: boolean | null;  // 売上成長率が加速しているか
-  hasUpwardRevision: boolean;         // 直近で上方修正があったか
-  roe: number | null;                 // ROE（直近期）
+  epsAccelerating: boolean | null;          // EPS成長率が加速しているか
+  salesAccelerating: boolean | null;        // 売上成長率が加速しているか
+  hasUpwardRevision: boolean;               // 直近で上方修正があったか
+  roe: number | null;                       // ROE（直近期）
+  annualEpsGrowths: (number | null)[];      // 年次EPS前期比成長率の配列（古い順）
+  operatingMarginImproving: boolean | null; // 営業利益率が改善傾向か
 }
 
 // ────────────────────────────────────────────────
@@ -244,6 +246,8 @@ interface FinanceDetail {
   salesAccelerating: boolean | null;
   hasUpwardRevision: boolean;
   roe: number | null;
+  annualEpsGrowths: (number | null)[];    // 年次EPS前期比成長率の配列（古い順）
+  operatingMarginImproving: boolean | null; // 営業利益率が改善傾向か
 }
 
 /** 成長率の配列から加速しているか判定（直近の成長率 > 前の成長率）*/
@@ -326,6 +330,31 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
     const epsAccelerating = isAccelerating(annualEps);
     const salesAccelerating = isAccelerating(annualSales);
 
+    // ── 年次EPS前期比成長率の配列 ──
+    const annualEpsGrowths: (number | null)[] = [];
+    for (let i = 1; i < annualEps.length; i++) {
+      const prev = annualEps[i - 1];
+      const curr = annualEps[i];
+      if (prev === null || curr === null || prev === 0) {
+        annualEpsGrowths.push(null);
+      } else {
+        annualEpsGrowths.push(((curr - prev) / Math.abs(prev)) * 100);
+      }
+    }
+
+    // ── 営業利益率の改善傾向 ──
+    // tds: [売上高(0), 営業益(1), ...]
+    const annualOperatingMargins = raw.annualRows.map(r => {
+      const s = parseNumber(r.values[0] ?? "");
+      const op = parseNumber(r.values[1] ?? "");
+      if (s === null || op === null || s === 0) return null;
+      return (op / s) * 100;
+    });
+    const validMargins = annualOperatingMargins.filter((v): v is number => v !== null);
+    const operatingMarginImproving = validMargins.length >= 2
+      ? validMargins[validMargins.length - 1] > validMargins[validMargins.length - 2]
+      : null;
+
     // ── 上方修正フラグ ──
     // 修正方向セルに "上" が含まれるか確認
     const hasUpwardRevision = raw.revisionTexts.some(t => t.includes("上") && !t.includes("修正方向"));
@@ -338,9 +367,9 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
       roe = parseNumber(latestKpi.values[3] ?? ""); // ROE は index 3
     }
 
-    return { epsAccelerating, salesAccelerating, hasUpwardRevision, roe };
+    return { epsAccelerating, salesAccelerating, hasUpwardRevision, roe, annualEpsGrowths, operatingMarginImproving };
   } catch {
-    return { epsAccelerating: null, salesAccelerating: null, hasUpwardRevision: false, roe: null };
+    return { epsAccelerating: null, salesAccelerating: null, hasUpwardRevision: false, roe: null, annualEpsGrowths: [], operatingMarginImproving: null };
   } finally {
     await ctx.close();
   }

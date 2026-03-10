@@ -59,6 +59,8 @@ export async function POST() {
         salesAccelerating: item.salesAccelerating,
         hasUpwardRevision: item.hasUpwardRevision,
         roe: item.roe,
+        annualEpsGrowths: item.annualEpsGrowths,
+        operatingMarginImproving: item.operatingMarginImproving,
       };
 
       const filterResult = filterStock(scanData);

@@ -177,6 +177,49 @@ describe("スコアリング: 加点", () => {
     const withRoe = filterStock({ ...base, roe: 10 });
     expect(withRoe.score - noRoe.score).toBe(0);
   });
+
+  // 年次EPS3期連続+25%以上 → A条件クリア +10
+  it("年次EPS3期連続+25%以上 → +10加点", () => {
+    const noGrowth = filterStock({ ...base });
+    const withGrowth = filterStock({ ...base, annualEpsGrowths: [30, 28, 25] });
+    expect(withGrowth.score - noGrowth.score).toBe(10);
+  });
+
+  // 年次EPS直近2期+25%以上 → +5
+  it("年次EPS直近2期+25%以上（3期未満）→ +5加点", () => {
+    const noGrowth = filterStock({ ...base });
+    const withGrowth = filterStock({ ...base, annualEpsGrowths: [10, 30, 25] });
+    expect(withGrowth.score - noGrowth.score).toBe(5);
+  });
+
+  // 営業利益率改善傾向 → +5
+  it("営業利益率改善傾向 → +5加点", () => {
+    const noMargin = filterStock({ ...base });
+    const withMargin = filterStock({ ...base, operatingMarginImproving: true });
+    expect(withMargin.score - noMargin.score).toBe(5);
+  });
+});
+
+// ────────────────────────────────────────────────
+// 除外条件: 年次EPS連続減少
+// ────────────────────────────────────────────────
+
+describe("除外条件: 年次EPS連続減少", () => {
+  it("年次EPS2期連続減少 → passed=false", () => {
+    const result = filterStock({ ...base, annualEpsGrowths: [20, -10, -15] });
+    expect(result.passed).toBe(false);
+    expect(result.reasons.some(r => r.includes("2期連続減少"))).toBe(true);
+  });
+
+  it("直近1期のみ減少 → 除外されない", () => {
+    const result = filterStock({ ...base, annualEpsGrowths: [30, 20, -5] });
+    expect(result.passed).toBe(true);
+  });
+
+  it("annualEpsGrowthsが空 → 除外されない", () => {
+    const result = filterStock({ ...base, annualEpsGrowths: [] });
+    expect(result.passed).toBe(true);
+  });
 });
 
 // ────────────────────────────────────────────────
