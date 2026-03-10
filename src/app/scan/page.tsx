@@ -71,17 +71,37 @@ const columns: StockColumn<RowData>[] = [
   },
 ];
 
+interface ScanProgressState {
+  total: number;
+  current: number;
+  currentCode: string;
+  currentName: string;
+  isScanning: boolean;
+}
+
 export default function ScanPage() {
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState<Record<string, boolean>>({});
   const [added, setAdded] = useState<Record<string, boolean>>({});
+  const [progress, setProgress] = useState<ScanProgressState | null>(null);
 
   async function handleScan() {
     setLoading(true);
     setError(null);
     setScanResult(null);
+    setProgress(null);
+
+    // SSE で進捗を受信
+    const es = new EventSource("/api/scan/progress");
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data as string) as ScanProgressState;
+      setProgress(data);
+      if (!data.isScanning && data.current > 0) es.close();
+    };
+    es.onerror = () => es.close();
+
     try {
       const res = await fetch("/api/scan", { method: "POST" });
       if (!res.ok) {
@@ -95,7 +115,9 @@ export default function ScanPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      es.close();
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -142,6 +164,36 @@ export default function ScanPage() {
       >
         {loading ? "スキャン中..." : "スキャン実行"}
       </button>
+
+      {loading && (
+        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4 space-y-2">
+          {progress && progress.total > 0 ? (
+            <>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-400">
+                  {progress.current} / {progress.total} 件取得中
+                  {progress.currentCode && (
+                    <span className="ml-2 text-gray-500">
+                      — {progress.currentCode} {progress.currentName}
+                    </span>
+                  )}
+                </span>
+                <span className="text-emerald-400 font-mono text-xs">
+                  {Math.round((progress.current / progress.total) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-1.5">
+                <div
+                  className="bg-emerald-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${(progress.current / progress.total) * 100}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <p className="text-sm text-gray-400 animate-pulse">一覧ページ取得中...</p>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-900/50 border border-red-700 rounded-lg p-4 text-red-300 text-sm">

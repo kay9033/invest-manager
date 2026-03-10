@@ -2,6 +2,7 @@ import { chromium, type Browser } from "playwright";
 import db from "@/lib/db";
 import { stocks, scans } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
+import { scanProgress } from "@/lib/scan-progress";
 
 // ────────────────────────────────────────────────
 // 型定義
@@ -546,6 +547,13 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
     const listItems = await scrapeListPage(browser, 1);
     console.log(`[scraper] 一覧取得: ${listItems.length}件`);
 
+    // 進捗初期化
+    scanProgress.isScanning = true;
+    scanProgress.current = 0;
+    scanProgress.total = listItems.length;
+    scanProgress.currentCode = "";
+    scanProgress.currentName = "";
+
     // 2. TOPIX月足を一度だけ取得（RS計算基準）
     const topixPrices = await scrapeMonthlyPrices(browser, "0010");
     const topix3m = calcReturn(topixPrices, 3);
@@ -572,6 +580,9 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
         const rs3m = topix3m !== null && stock3m !== null ? stock3m - topix3m : null;
         const rs6m = topix6m !== null && stock6m !== null ? stock6m - topix6m : null;
         results.push({ ...chunk[j], ...details[j], ...finances[j], rs3m, rs6m, hasInstitutionalIncrease: institutionalList[j] });
+        scanProgress.current = i + j + 1;
+        scanProgress.currentCode = chunk[j].code;
+        scanProgress.currentName = chunk[j].name;
       }
       if (i + CONCURRENCY < listItems.length) {
         await new Promise(r => setTimeout(r, 500));
@@ -579,6 +590,7 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
     }
 
     console.log(`[scraper] 詳細取得完了: ${results.length}件`);
+    scanProgress.isScanning = false;
     return results;
   } finally {
     await browser.close();
