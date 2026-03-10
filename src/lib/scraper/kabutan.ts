@@ -438,45 +438,52 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
     await page.waitForTimeout(800);
 
     const raw = await page.evaluate(() => {
-      const tables = document.querySelectorAll("table");
+      const tables = Array.from(document.querySelectorAll("table"));
 
-      // ── 年次業績テーブル (table[3]): 売上高・1株益の推移 ──
-      const t3 = tables[3];
+      const isDataRow = (label: string) =>
+        (label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) &&
+        !label.includes("予");
+
+      // ── 年次業績テーブル: 「修正1株益」列を持つテーブルを検索 ──
       const annualRows: { label: string; values: string[] }[] = [];
-      if (t3) {
-        for (const tr of t3.querySelectorAll("tr")) {
+      for (const t of tables) {
+        const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
+        if (!headers.some(h => h.includes("修正1株益")) || !headers.some(h => h.includes("売上高"))) continue;
+        for (const tr of t.querySelectorAll("tr")) {
           const th = tr.querySelector("th");
           const label = th?.textContent?.trim() ?? "";
           const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
-          if ((label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) && !label.includes("予") && tds.length >= 5) {
-            annualRows.push({ label, values: tds });
-          }
+          if (isDataRow(label) && tds.length >= 5) annualRows.push({ label, values: tds });
         }
+        if (annualRows.length > 0) break;
       }
 
-      // ── 業績修正テーブル (table[4]): 修正方向を検出 ──
-      const t4 = tables[4];
+      // ── 業績修正テーブル: 「修正方向」列を持つテーブルを検索 ──
       const revisionTexts: string[] = [];
-      if (t4) {
-        for (const td of t4.querySelectorAll("td")) {
+      for (const t of tables) {
+        const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
+        if (!headers.some(h => h.includes("修正方向"))) continue;
+        for (const td of t.querySelectorAll("td")) {
           const text = td.textContent?.trim() ?? "";
           if (text.includes("上") || text.includes("下")) revisionTexts.push(text);
         }
+        break;
       }
 
-      // ── 経営指標テーブル (table[12]): ROE ──
-      // headers: 決算期 | 売上高 | 営業益 | 売上営業利益率 | ROE | ROA | 総資産回転率 | 修正1株益
-      const t12 = tables[12];
+      // ── 経営指標テーブル: 「ROE」列を持つテーブルを検索 ──
       const kpiRows: { label: string; values: string[] }[] = [];
-      if (t12) {
-        for (const tr of t12.querySelectorAll("tr")) {
+      for (const t of tables) {
+        const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
+        if (!headers.some(h => h === "ROE" || h.includes("ROE"))) continue;
+        // ROEの列インデックスを取得（th列を除いた位置）
+        const roeIdx = headers.findIndex(h => h === "ROE" || h.includes("ROE")) - 1;
+        for (const tr of t.querySelectorAll("tr")) {
           const th = tr.querySelector("th");
           const label = th?.textContent?.trim() ?? "";
           const tds = Array.from(tr.querySelectorAll("td")).map(td => td.textContent?.trim() ?? "");
-          if ((label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) && !label.includes("予") && tds.length >= 4) {
-            kpiRows.push({ label, values: tds });
-          }
+          if (isDataRow(label) && tds.length >= 4) kpiRows.push({ label, values: tds, roeIdx } as typeof kpiRows[0] & { roeIdx: number });
         }
+        if (kpiRows.length > 0) break;
       }
 
       return { annualRows, revisionTexts, kpiRows };
@@ -520,11 +527,12 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
     const hasUpwardRevision = raw.revisionTexts.some(t => t.includes("上") && !t.includes("修正方向"));
 
     // ── ROE: kpiRowsの直近実績（最後の行）のindex[3] ──
-    // kpi headers: [売上高, 営業益, 売上営業利益率, ROE, ROA, ...]
+    // ROEは動的に取得した列インデックスを使用
     let roe: number | null = null;
     if (raw.kpiRows.length > 0) {
-      const latestKpi = raw.kpiRows[raw.kpiRows.length - 1];
-      roe = parseNumber(latestKpi.values[3] ?? ""); // ROE は index 3
+      const latestKpi = raw.kpiRows[raw.kpiRows.length - 1] as typeof raw.kpiRows[0] & { roeIdx?: number };
+      const roeIdx = latestKpi.roeIdx ?? 3; // フォールバック: index 3
+      roe = parseNumber(latestKpi.values[roeIdx] ?? "");
     }
 
     return { epsAccelerating, salesAccelerating, hasUpwardRevision, roe, annualEpsGrowths, operatingMarginImproving };
