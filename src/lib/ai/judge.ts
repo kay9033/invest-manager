@@ -27,43 +27,47 @@ export interface JudgeResult {
   newsSearched: boolean; // ウェブ検索を使ったか
 }
 
-const SYSTEM_PROMPT = `あなたは日本株の投資アシスタントです。以下のルールに基づいて売買判定を行ってください。
+const SYSTEM_PROMPT = `あなたは日本株の投資アシスタントです。オニールのCAN-SLIMとDUKEの新高値ブレイク投資術に基づいて売買判定を行ってください。
 
-## ステップ1: 最新情報の収集
+## ステップ1: 最新情報の収集（web_search必須）
 銘柄コードと社名でウェブ検索を行い、以下を確認してください:
 - 直近の決算発表・業績修正（上方修正 or 下方修正）
-- 増配・自社株買い・M&Aなどの重要発表
+- 増配・自社株買い・M&Aなどの重要発表（N条件: ビッグチェンジ）
 - 業界トレンドやテーマ性
-- 「だまし」を示す否定的なニュース
+- 「だまし」を示す否定的なニュース・不祥事
 
-## ステップ2: 売買判定ルール
+## ステップ2: ベースパターン分析（N条件・L条件）
+以下のパターンを確認してください。「正しいベース」から抜けているかが最重要です:
+- **カップウィズハンドル**: U字型のカップ＋小さなハンドル（調整15%以内）のブレイク
+- **フラットベース**: 5〜15%の浅い横ばい後のブレイク（大型株に多い）
+- **VCP（ボラティリティ収束）**: 値幅が徐々に縮小し、最後に出来高を伴うブレイク
+- **ボックス圏上放れ**: レンジ上限を出来高スパイクで突破
+
+**だましの判定**: ベース形成なしの単純な高値追いは除外
+
+## ステップ3: 売買判定ルール
 
 ### 買い（BUY）
-- 抵抗線突破直後 + 出来高スパイク（25日平均比150%以上）
-- 大型株: フラットベース・25日線タッチからの反発
-- 中小型株: カップウィズハンドル・VCP（ボラティリティ収束）パターン
-- 上方修正・増配・自社株買いなどポジティブ材料あり
+- 正しいベースからのピボット突破直後（+5%以内）+ 出来高スパイク（25日平均比150%以上）
+- ビッグチェンジ（上方修正・新製品・業界追い風）が確認できる
+- TOPIX比でアウトパフォームしている（RS良好）
 
 ### 押し目待ち（WATCH）
-- 5%以上乖離している → 押し目を待つ
-- 新高値圏でのもみ合い → 上昇準備期間として継続監視
+- ピボットから+5%超の乖離 → 押し目を待つ
+- ベース形成中（もみ合い継続）→ ブレイクを待つ
+- 出来高が伴っていない新高値 → だましの可能性
 
 ### 売り（SELL）
 - 終値で25日移動平均線を完全に割り込む
-- 週足レベルで数週間乖離しすぎ + 出来高異常増 → 半分利確
-- 損切りライン: 基本-7%（超大型株は-5%）
-
-## 必須確認事項
-- 出来高を伴わない新高値は「だまし」の可能性 → WATCH以下に格下げ
-- 売買代金5億円未満は流動性リスク → WATCHに格下げ
-- 低位株（100円未満）・万年割安株は除外
+- クライマックストップのシグナル（急騰後の大出来高＋大陰線）
+- 損切りライン: 基本-7〜8%（ピボットから）
 
 ## 出力形式
 分析の最後に必ずJSON形式で判定を返してください:
 \`\`\`json
 {
   "status": "BUY" または "WATCH" または "SELL",
-  "reason": "判定理由（日本語、300字以内。ウェブ検索で得た情報も含めること）",
+  "reason": "判定理由（日本語、400字以内。ベースパターン・ビッグチェンジ・ウェブ検索情報を含めること）",
   "confidence": 0から100の整数
 }
 \`\`\``;
@@ -78,26 +82,27 @@ export async function judgeStock(
         ? `${((stockData.volume / stockData.avgVolume25) * 100).toFixed(0)}%`
         : "不明";
 
-  const userMessage = `以下の銘柄について、まずウェブ検索で最新ニュースを調べてから、売買判定を行ってください。
+  const userMessage = `以下の銘柄について、ウェブ検索で最新ニュース・決算・チャート状況を調べてから、売買判定を行ってください。
 
 【銘柄情報】
 銘柄コード: ${stockData.code}
 社名: ${stockData.name}
 株価: ${stockData.closePrice !== null ? `${stockData.closePrice.toLocaleString()}円` : "不明"}
 売買代金: ${stockData.tradingValue !== null ? `${(stockData.tradingValue / 100_000_000).toFixed(1)}億円` : "不明"}
-出来高: ${stockData.volume !== null ? stockData.volume.toLocaleString() : "不明"}
-25日平均出来高: ${stockData.avgVolume25 !== null ? stockData.avgVolume25.toLocaleString() : "不明"}
-出来高比率: ${volumeRatioDisplay}
+出来高比率(25日平均比): ${volumeRatioDisplay}
 時価総額: ${stockData.marketCap !== null ? `${(stockData.marketCap / 100_000_000).toFixed(0)}億円` : "不明"}
 EPS成長率(前期比): ${stockData.epsGrowthRate !== null ? `${stockData.epsGrowthRate.toFixed(1)}%` : "不明"}
 売上高成長率(前期比): ${stockData.salesGrowthRate !== null ? `${stockData.salesGrowthRate.toFixed(1)}%` : "不明"}
-RS(3ヶ月): ${stockData.rs3m !== null ? `${stockData.rs3m.toFixed(1)}%` : "不明"}
-RS(6ヶ月): ${stockData.rs6m !== null ? `${stockData.rs6m.toFixed(1)}%` : "不明"}
+RS(3ヶ月,TOPIX比): ${stockData.rs3m !== null ? `${stockData.rs3m > 0 ? "+" : ""}${stockData.rs3m.toFixed(1)}%` : "不明"}
+RS(6ヶ月,TOPIX比): ${stockData.rs6m !== null ? `${stockData.rs6m > 0 ? "+" : ""}${stockData.rs6m.toFixed(1)}%` : "不明"}
 新高値更新: ${stockData.isNewHigh ? "はい（52週高値更新）" : "いいえ"}
 
-検索クエリの例: "${stockData.name} 株 決算 業績 2026" や "${stockData.code} ${stockData.name} ニュース"
+【確認してほしい項目】
+1. 最新ニュース: "${stockData.name} 株 決算 業績 2026"
+2. ベースパターン: "${stockData.code} ${stockData.name} チャート テクニカル" で直近のチャート形状を確認
+3. ビッグチェンジ: 新製品・上方修正・業界テーマ等のポジティブ材料
 
-最新情報を踏まえて判定してください。`;
+上記3点を踏まえて判定してください。`;
 
   // web_search ツールを有効化してリクエスト
   // beta header: "web-search-2025-03-05"

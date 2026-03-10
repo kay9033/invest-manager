@@ -11,7 +11,9 @@
       "Bash(python3 -m json.tool)",
       "WebSearch",
       "Bash(npx vitest:*)",
-      "WebFetch(domain:kabutan.jp)"
+      "WebFetch(domain:kabutan.jp)",
+      "WebFetch(domain:irbank.net)",
+      "WebFetch(domain:minkabu.jp)"
     ]
   }
 }

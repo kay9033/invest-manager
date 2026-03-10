@@ -31,6 +31,8 @@ export interface ScrapedStock {
   // RS（TOPIX比相対強度）
   rs3m: number | null;                      // 3ヶ月騰落率 - TOPIX3ヶ月騰落率
   rs6m: number | null;                      // 6ヶ月騰落率 - TOPIX6ヶ月騰落率
+  // IRBANK: 大量保有報告（I条件）
+  hasInstitutionalIncrease: boolean | null; // 直近6ヶ月以内に5%超保有者の増加報告があるか
 }
 
 // ────────────────────────────────────────────────
@@ -273,6 +275,68 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
 }
 
 // ────────────────────────────────────────────────
+// IRBANK: 大量保有報告書（機関投資家動向）
+// ────────────────────────────────────────────────
+
+/** 直近6ヶ月以内に5%超保有者の増加報告があるか */
+export async function scrapeInstitutionalIncrease(browser: Browser, code: string): Promise<boolean | null> {
+  const ctx = await browser.newContext({
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  });
+  const page = await ctx.newPage();
+  try {
+    // Step1: 銘柄ページからEDINETコードを取得
+    await page.goto(`https://irbank.net/${code}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(500);
+    const edinetCode = await page.evaluate(() => {
+      const links = Array.from(document.querySelectorAll("a[href]"));
+      for (const a of links) {
+        const m = (a as HTMLAnchorElement).href.match(/irbank\.net\/(E\d+)\/share/);
+        if (m) return m[1];
+      }
+      return null;
+    });
+    if (!edinetCode) return null;
+
+    // Step2: 大量保有報告ページを取得
+    await page.goto(`https://irbank.net/${edinetCode}/share`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await page.waitForTimeout(500);
+
+    const result = await page.evaluate(() => {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const rows = Array.from(document.querySelectorAll("table tr"));
+      for (const row of rows) {
+        const tds = Array.from(row.querySelectorAll("td"));
+        if (tds.length < 3) continue;
+        // 日付セル（例: "2025/06/03"）
+        const dateText = tds[0]?.textContent?.trim() ?? "";
+        const dateMatch = dateText.match(/(\d{4})\/(\d{2})\/(\d{2})/);
+        if (!dateMatch) continue;
+        const reportDate = new Date(Number(dateMatch[1]), Number(dateMatch[2]) - 1, Number(dateMatch[3]));
+        if (reportDate < sixMonthsAgo) continue;
+        // 増減セル（例: "+0.52%" → 増加）
+        const changeText = tds[2]?.textContent?.trim() ?? "";
+        if (changeText.startsWith("+")) return true;
+      }
+      return false;
+    });
+    return result;
+  } catch {
+    return null;
+  } finally {
+    await ctx.close();
+  }
+}
+
+// ────────────────────────────────────────────────
 // 月足ページ: 過去株価（RS計算用）
 // ────────────────────────────────────────────────
 
@@ -494,11 +558,12 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
 
     for (let i = 0; i < listItems.length; i += CONCURRENCY) {
       const chunk = listItems.slice(i, i + CONCURRENCY);
-      // 個別ページ・財務ページ・月足を並列取得
-      const [details, finances, monthlyPricesList] = await Promise.all([
+      // 個別ページ・財務ページ・月足・IRBANK大量保有を並列取得
+      const [details, finances, monthlyPricesList, institutionalList] = await Promise.all([
         Promise.all(chunk.map(item => scrapeStockDetail(browser, item.code))),
         Promise.all(chunk.map(item => scrapeFinance(browser, item.code))),
         Promise.all(chunk.map(item => scrapeMonthlyPrices(browser, item.code))),
+        Promise.all(chunk.map(item => scrapeInstitutionalIncrease(browser, item.code))),
       ]);
       for (let j = 0; j < chunk.length; j++) {
         const prices = monthlyPricesList[j];
@@ -506,7 +571,7 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
         const stock6m = calcReturn(prices, 6);
         const rs3m = topix3m !== null && stock3m !== null ? stock3m - topix3m : null;
         const rs6m = topix6m !== null && stock6m !== null ? stock6m - topix6m : null;
-        results.push({ ...chunk[j], ...details[j], ...finances[j], rs3m, rs6m });
+        results.push({ ...chunk[j], ...details[j], ...finances[j], rs3m, rs6m, hasInstitutionalIncrease: institutionalList[j] });
       }
       if (i + CONCURRENCY < listItems.length) {
         await new Promise(r => setTimeout(r, 500));

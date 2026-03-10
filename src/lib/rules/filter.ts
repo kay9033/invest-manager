@@ -19,6 +19,7 @@ export interface ScanData {
   marginRatio?: number | null;               // 信用倍率
   rs3m?: number | null;                      // 3ヶ月RS（TOPIX比超過リターン）
   rs6m?: number | null;                      // 6ヶ月RS（TOPIX比超過リターン）
+  hasInstitutionalIncrease?: boolean | null; // 直近6ヶ月以内に5%超保有者の増加報告があるか（I条件）
 }
 
 export interface FilterResult {
@@ -185,7 +186,14 @@ export function filterStock(scan: ScanData): FilterResult {
     reasons.push(`RS劣位 - TOPIX比 ${[rs3mStr, rs6mStr].filter(Boolean).join(", ")}（L条件注意）`);
   }
 
-  // 11. I条件: 信用倍率（低いほど売り圧力が少ない）
+  // 11. I条件: 信用倍率（低いほど売り圧力が少ない）+ 大量保有報告増加
+  if (scan.hasInstitutionalIncrease === true) {
+    score += 5;
+    reasons.push("直近6ヶ月以内に5%超保有者の増加報告あり（I条件クリア）");
+  } else if (scan.hasInstitutionalIncrease === false) {
+    reasons.push("大量保有者の増加報告なし（直近6ヶ月）");
+  }
+
   if (scan.marginRatio != null) {
     if (scan.marginRatio < 1.5) {
       score += 3;

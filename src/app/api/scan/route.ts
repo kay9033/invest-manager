@@ -64,6 +64,7 @@ export async function POST() {
         marginRatio: item.marginRatio,
         rs3m: item.rs3m,
         rs6m: item.rs6m,
+        hasInstitutionalIncrease: item.hasInstitutionalIncrease,
       };
 
       const filterResult = filterStock(scanData);
