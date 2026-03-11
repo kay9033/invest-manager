@@ -219,6 +219,7 @@ export default function ScanPage() {
               columns={columns}
               emptyMessage="スキャン結果がありません"
               onRowClick={(row) => router.push(`/scan/${row.code}`)}
+              defaultSortKey="score"
             />
           </div>
         </div>

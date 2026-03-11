@@ -65,7 +65,7 @@ export default async function HomePage() {
       </section>
 
       {/* ナビゲーション */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Link
           href="/scan"
           className="group bg-gray-900 border border-gray-800 hover:border-emerald-500 rounded-xl p-6 transition-colors"
@@ -94,6 +94,23 @@ export default async function HomePage() {
               </h2>
               <p className="mt-1 text-sm text-gray-400">
                 AI売買判定・メモ管理
+              </p>
+            </div>
+            <span className="text-2xl">→</span>
+          </div>
+        </Link>
+
+        <Link
+          href="/rules"
+          className="group bg-gray-900 border border-gray-800 hover:border-emerald-500 rounded-xl p-6 transition-colors"
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                投資ルール
+              </h2>
+              <p className="mt-1 text-sm text-gray-400">
+                CAN-SLIM + DUKE 売買ルール一覧
               </p>
             </div>
             <span className="text-2xl">→</span>

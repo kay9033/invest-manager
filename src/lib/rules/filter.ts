@@ -28,6 +28,11 @@ export interface FilterResult {
   score: number; // 0-100
 }
 
+/** reasons に点数付き理由を追加するヘルパー。points > 0 なら "[+N] " プレフィックスを付ける */
+function r(reasons: string[], points: number, text: string): void {
+  reasons.push(points > 0 ? `[+${points}] ${text}` : text);
+}
+
 export function filterStock(scan: ScanData): FilterResult {
   const reasons: string[] = [];
   let score = 0;
@@ -39,6 +44,7 @@ export function filterStock(scan: ScanData): FilterResult {
     return { passed: false, reasons, score: 0 };
   }
   score += 20;
+  r(reasons, 20, "新高値更新（必須条件）");
 
   // 2. 株価100円以上（低位株除外）
   if (scan.closePrice !== null && scan.closePrice < 100) {
@@ -47,6 +53,7 @@ export function filterStock(scan: ScanData): FilterResult {
   }
   if (scan.closePrice !== null && scan.closePrice >= 100) {
     score += 10;
+    r(reasons, 10, `株価${scan.closePrice.toLocaleString()}円（100円以上）`);
   }
 
   // 3. 売買代金チェック（データある場合のみ必須）
@@ -56,11 +63,17 @@ export function filterStock(scan: ScanData): FilterResult {
       return { passed: false, reasons, score };
     }
     score += 30;
-    if (scan.tradingValue >= 10_000_000_000) score += 10;
-    else if (scan.tradingValue >= 2_000_000_000) score += 5;
+    r(reasons, 30, `売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円（流動性OK）`);
+    if (scan.tradingValue >= 10_000_000_000) {
+      score += 10;
+      r(reasons, 10, "売買代金10億円以上（高流動性ボーナス）");
+    } else if (scan.tradingValue >= 2_000_000_000) {
+      score += 5;
+      r(reasons, 5, "売買代金2億円以上（流動性ボーナス）");
+    }
   } else {
-    reasons.push("売買代金: データなし（要確認）");
-    score += 15; // データなしは減点なしだが満点も与えない
+    score += 15;
+    r(reasons, 15, "売買代金: データなし（要確認）");
   }
 
   // 4. 出来高スパイクチェック（データある場合のみ必須）
@@ -80,7 +93,11 @@ export function filterStock(scan: ScanData): FilterResult {
       return { passed: false, reasons, score };
     }
     score += 20;
-    if (volumeRatio >= 300) score += 10;
+    r(reasons, 20, `出来高比率${volumeRatio.toFixed(0)}%（25日平均比 スパイクあり）`);
+    if (volumeRatio >= 300) {
+      score += 10;
+      r(reasons, 10, `出来高比率${volumeRatio.toFixed(0)}% - 300%超（強いスパイク）`);
+    }
   } else {
     reasons.push("出来高: データなし（要確認）");
   }
@@ -89,10 +106,10 @@ export function filterStock(scan: ScanData): FilterResult {
   if (scan.epsGrowthRate !== null) {
     if (scan.epsGrowthRate >= 25) {
       score += 10;
-      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 優良（25%以上）`);
+      r(reasons, 10, `EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 優良（25%以上）`);
     } else if (scan.epsGrowthRate >= 0) {
       score += 3;
-      reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 増益`);
+      r(reasons, 3, `EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 増益`);
     } else {
       reasons.push(`EPS成長率${scan.epsGrowthRate.toFixed(1)}% - 減益注意`);
     }
@@ -101,7 +118,7 @@ export function filterStock(scan: ScanData): FilterResult {
   // 5b. EPS加速（C&A: 利益の加速）
   if (scan.epsAccelerating === true) {
     score += 8;
-    reasons.push("EPS加速中（直近期の成長率が前期を上回る）");
+    r(reasons, 8, "EPS加速中（直近期の成長率が前期を上回る）");
   } else if (scan.epsAccelerating === false) {
     reasons.push("EPS減速注意（成長率が鈍化）");
   }
@@ -117,10 +134,10 @@ export function filterStock(scan: ScanData): FilterResult {
     // 加点: 3期連続+25%以上 → A条件クリア
     if (valid.length >= 3 && valid.slice(-3).every(g => g >= 25)) {
       score += 10;
-      reasons.push("年間EPS3期連続+25%以上（A条件クリア）");
+      r(reasons, 10, "年間EPS3期連続+25%以上（A条件クリア）");
     } else if (valid.length >= 2 && valid.slice(-2).every(g => g >= 25)) {
       score += 5;
-      reasons.push("年間EPS直近2期+25%以上");
+      r(reasons, 5, "年間EPS直近2期+25%以上");
     }
   }
 
@@ -129,10 +146,10 @@ export function filterStock(scan: ScanData): FilterResult {
     const sgr = scan.salesGrowthRate!;
     if (sgr >= 25) {
       score += 10;
-      reasons.push(`売上成長率${sgr.toFixed(1)}% - 優先条件クリア（25%以上）`);
+      r(reasons, 10, `売上成長率${sgr.toFixed(1)}% - 優先条件クリア（25%以上）`);
     } else if (sgr >= 0) {
       score += 3;
-      reasons.push(`売上成長率${sgr.toFixed(1)}% - 増収`);
+      r(reasons, 3, `売上成長率${sgr.toFixed(1)}% - 増収`);
     } else {
       reasons.push(`売上成長率${sgr.toFixed(1)}% - 減収注意`);
     }
@@ -141,23 +158,23 @@ export function filterStock(scan: ScanData): FilterResult {
   // 6b. 売上加速
   if (scan.salesAccelerating === true) {
     score += 5;
-    reasons.push("売上加速中（直近期の伸びが前期を上回る）");
+    r(reasons, 5, "売上加速中（直近期の伸びが前期を上回る）");
   }
 
   // 7. 上方修正フラグ（大型株の重要カタリスト）
   if (scan.hasUpwardRevision) {
     score += 10;
-    reasons.push("直近で上方修正あり - 重要ポジティブ材料");
+    r(reasons, 10, "直近で上方修正あり - 重要ポジティブ材料");
   }
 
   // 8. ROEチェック（A条件: 17%以上+5, 20%以上+3追加）
   if (scan.roe != null) {
     if (scan.roe >= 20) {
       score += 8; // 17%以上+5 + 20%以上+3
-      reasons.push(`ROE${scan.roe.toFixed(1)}% - 高収益（20%以上）`);
+      r(reasons, 8, `ROE${scan.roe.toFixed(1)}% - 高収益（20%以上）`);
     } else if (scan.roe >= 17) {
       score += 5;
-      reasons.push(`ROE${scan.roe.toFixed(1)}% - 良好（17%以上）`);
+      r(reasons, 5, `ROE${scan.roe.toFixed(1)}% - 良好（17%以上）`);
     } else if (scan.roe > 0) {
       reasons.push(`ROE${scan.roe.toFixed(1)}%`);
     }
@@ -166,7 +183,7 @@ export function filterStock(scan: ScanData): FilterResult {
   // 9. 営業利益率の改善傾向（A条件）
   if (scan.operatingMarginImproving === true) {
     score += 5;
-    reasons.push("営業利益率改善傾向（A条件）");
+    r(reasons, 5, "営業利益率改善傾向（A条件）");
   }
 
   // 10. L条件: TOPIX比相対強度（RS）
@@ -174,12 +191,12 @@ export function filterStock(scan: ScanData): FilterResult {
   const rs6mPos = scan.rs6m !== null && scan.rs6m !== undefined && scan.rs6m > 0;
   if (rs3mPos && rs6mPos) {
     score += 8;
-    reasons.push(`RS良好 - TOPIX比 3M:+${scan.rs3m!.toFixed(1)}%, 6M:+${scan.rs6m!.toFixed(1)}%（L条件クリア）`);
+    r(reasons, 8, `RS良好 - TOPIX比 3M:+${scan.rs3m!.toFixed(1)}%, 6M:+${scan.rs6m!.toFixed(1)}%（L条件クリア）`);
   } else if (rs3mPos || rs6mPos) {
     score += 4;
     const rs3mStr = scan.rs3m != null ? `3M:${scan.rs3m.toFixed(1)}%` : "";
     const rs6mStr = scan.rs6m != null ? `6M:${scan.rs6m.toFixed(1)}%` : "";
-    reasons.push(`RS部分通過 - TOPIX比 ${[rs3mStr, rs6mStr].filter(Boolean).join(", ")}`);
+    r(reasons, 4, `RS部分通過 - TOPIX比 ${[rs3mStr, rs6mStr].filter(Boolean).join(", ")}`);
   } else if (scan.rs3m != null || scan.rs6m != null) {
     const rs3mStr = scan.rs3m != null ? `3M:${scan.rs3m.toFixed(1)}%` : "";
     const rs6mStr = scan.rs6m != null ? `6M:${scan.rs6m.toFixed(1)}%` : "";
@@ -189,7 +206,7 @@ export function filterStock(scan: ScanData): FilterResult {
   // 11. I条件: 信用倍率（低いほど売り圧力が少ない）+ 大量保有報告増加
   if (scan.hasInstitutionalIncrease === true) {
     score += 5;
-    reasons.push("直近6ヶ月以内に5%超保有者の増加報告あり（I条件クリア）");
+    r(reasons, 5, "直近6ヶ月以内に5%超保有者の増加報告あり（I条件クリア）");
   } else if (scan.hasInstitutionalIncrease === false) {
     reasons.push("大量保有者の増加報告なし（直近6ヶ月）");
   }
@@ -197,7 +214,7 @@ export function filterStock(scan: ScanData): FilterResult {
   if (scan.marginRatio != null) {
     if (scan.marginRatio < 1.5) {
       score += 3;
-      reasons.push(`信用倍率${scan.marginRatio.toFixed(2)}倍 - 低水準（I条件良好）`);
+      r(reasons, 3, `信用倍率${scan.marginRatio.toFixed(2)}倍 - 低水準（I条件良好）`);
     } else if (scan.marginRatio >= 5) {
       reasons.push(`信用倍率${scan.marginRatio.toFixed(2)}倍 - 高水準注意（売り圧力リスク）`);
     } else {

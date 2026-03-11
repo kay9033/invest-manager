@@ -42,7 +42,7 @@ export interface ScrapedStock {
 
 export function parseNumber(text: string): number | null {
   if (!text) return null;
-  const cleaned = text.replace(/[,\s株円回　]/g, "").trim();
+  const cleaned = text.replace(/[,\s株円回倍　]/g, "").trim();
   if (!cleaned || cleaned === "-" || cleaned === "－" || cleaned === "---") return null;
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
@@ -210,26 +210,19 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
         }
       }
 
-      // ── 信用倍率（基本情報テーブル）──
+      // ── 信用倍率（PER/PBR/信用倍率テーブル: ヘッダ行+データ行の構造）──
+      // 構造: <thead><tr><th>PER</th><th>PBR</th><th>利回り</th><th>信用倍率</th></tr></thead>
+      //       <tbody><tr><td>26.3倍</td><td>4.64倍</td><td>0.47%</td><td>3.22倍</td></tr></tbody>
       let marginRatioText = "";
       for (const t of tables) {
-        const rows = t.querySelectorAll("tr");
-        for (const tr of rows) {
-          const ths = tr.querySelectorAll("th");
-          for (const th of ths) {
-            if (th.textContent?.includes("信用倍率")) {
-              const tds = tr.querySelectorAll("td");
-              // 同じtr内のtdを探す
-              if (tds.length > 0) {
-                marginRatioText = tds[tds.length - 1]?.textContent?.trim() ?? "";
-              } else {
-                // 次のtdを兄弟要素から探す
-                const next = th.nextElementSibling;
-                if (next) marginRatioText = next.textContent?.trim() ?? "";
-              }
-            }
-          }
-        }
+        const headerCells = Array.from(t.querySelectorAll("thead th, tr:first-child th"));
+        const idx = headerCells.findIndex(th => th.textContent?.includes("信用倍率"));
+        if (idx < 0) continue;
+        // ヘッダの次のデータ行（tbodyの最初のtr）を取得
+        const dataRow = t.querySelector("tbody tr");
+        if (!dataRow) continue;
+        const tds = dataRow.querySelectorAll("td");
+        marginRatioText = tds[idx]?.textContent?.trim() ?? "";
         if (marginRatioText) break;
       }
 
@@ -473,10 +466,10 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
       // ── 経営指標テーブル: 「ROE」列を持つテーブルを検索 ──
       const kpiRows: { label: string; values: string[] }[] = [];
       for (const t of tables) {
-        const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
-        if (!headers.some(h => h === "ROE" || h.includes("ROE"))) continue;
+        const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim().normalize("NFKC") ?? "");
+        if (!headers.some(h => h.includes("ROE"))) continue;
         // ROEの列インデックスを取得（th列を除いた位置）
-        const roeIdx = headers.findIndex(h => h === "ROE" || h.includes("ROE")) - 1;
+        const roeIdx = headers.findIndex(h => h.includes("ROE")) - 1;
         for (const tr of t.querySelectorAll("tr")) {
           const th = tr.querySelector("th");
           const label = th?.textContent?.trim() ?? "";

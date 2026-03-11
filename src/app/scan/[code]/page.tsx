@@ -95,16 +95,24 @@ export default function ScanDetailPage() {
   const { stock, scan } = data;
   const kabutanUrl = `https://kabutan.jp/stock/?code=${code}`;
 
-  const positiveReasons = scan?.reasons.filter((r) =>
-    !r.includes("注意") && !r.includes("なし") && !r.includes("劣位") &&
-    !r.includes("減少") && !r.includes("減益") && !r.includes("減収") &&
-    !r.includes("データなし")
-  ) ?? [];
-  const warnReasons = scan?.reasons.filter((r) =>
-    r.includes("注意") || r.includes("劣位") || r.includes("減少") ||
-    r.includes("減益") || r.includes("減収")
-  ) ?? [];
-  const missingReasons = scan?.reasons.filter((r) => r.includes("データなし")) ?? [];
+  function parseReason(raw: string): { points: number | null; text: string } {
+    const m = raw.match(/^\[(\+\d+)\] (.+)/);
+    if (m) return { points: parseInt(m[1].replace("+", "")), text: m[2] };
+    return { points: null, text: raw };
+  }
+
+  const allReasons = scan?.reasons.map(parseReason) ?? [];
+  const positiveReasons = allReasons.filter(({ text }) =>
+    !text.includes("注意") && !text.includes("なし") && !text.includes("劣位") &&
+    !text.includes("減少") && !text.includes("減益") && !text.includes("減収") &&
+    !text.includes("データなし")
+  );
+  const warnReasons = allReasons.filter(({ text }) =>
+    text.includes("注意") || text.includes("劣位") || text.includes("減少") ||
+    text.includes("減益") || text.includes("減収")
+  );
+  const missingReasons = allReasons.filter(({ text }) => text.includes("データなし"));
+  const scoredTotal = allReasons.reduce((sum, { points }) => sum + (points ?? 0), 0);
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -174,25 +182,35 @@ export default function ScanDetailPage() {
           )}
 
           <div className="space-y-1.5">
-            {positiveReasons.map((r, i) => (
+            {positiveReasons.map(({ text, points }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-emerald-400 mt-0.5 shrink-0">✓</span>
-                <span className="text-gray-200">{r}</span>
+                <span className="text-gray-200 flex-1">{text}</span>
+                {points !== null && (
+                  <span className="text-emerald-500 font-mono text-xs shrink-0 mt-0.5">+{points}pt</span>
+                )}
               </div>
             ))}
-            {warnReasons.map((r, i) => (
+            {warnReasons.map(({ text }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-amber-400 mt-0.5 shrink-0">!</span>
-                <span className="text-gray-400">{r}</span>
+                <span className="text-gray-400 flex-1">{text}</span>
               </div>
             ))}
-            {missingReasons.map((r, i) => (
+            {missingReasons.map(({ text }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-gray-600 mt-0.5 shrink-0">?</span>
-                <span className="text-gray-600">{r}</span>
+                <span className="text-gray-600 flex-1">{text}</span>
               </div>
             ))}
           </div>
+          {scoredTotal > 0 && (
+            <div className="pt-2 border-t border-gray-800 flex justify-end text-xs text-gray-500">
+              加点合計: <span className="text-emerald-400 font-mono ml-1">{scoredTotal}pt</span>
+              <span className="ml-1">→ 正規化スコア: </span>
+              <span className="text-white font-mono ml-1">{scan!.score} / 100</span>
+            </div>
+          )}
         </div>
       )}
 

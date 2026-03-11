@@ -15,6 +15,8 @@ interface StockTableProps<T extends Record<string, unknown>> {
   columns: StockColumn<T>[];
   emptyMessage?: string;
   onRowClick?: (row: T) => void;
+  defaultSortKey?: string;
+  defaultSortDir?: SortDir;
 }
 
 type SortDir = "asc" | "desc";
@@ -24,9 +26,11 @@ export default function StockTable<T extends Record<string, unknown>>({
   columns,
   emptyMessage = "データがありません",
   onRowClick,
+  defaultSortKey,
+  defaultSortDir,
 }: StockTableProps<T>) {
-  const [sortKey, setSortKey] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sortKey, setSortKey] = useState<string | null>(defaultSortKey ?? null);
+  const [sortDir, setSortDir] = useState<SortDir>(defaultSortDir ?? "desc");
 
   const sortedData = useMemo(() => {
     if (!sortKey) return data;
