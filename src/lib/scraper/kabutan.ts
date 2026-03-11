@@ -14,6 +14,7 @@ export interface ScrapedStock {
   market: string;
   closePrice: number | null;
   volume: number | null;
+  avgVolume25: number | null;
   tradingValue: number | null;
   marketCap: number | null;
   sales: number | null;
@@ -142,6 +143,7 @@ async function scrapeListPage(browser: Browser, pageNum: number): Promise<ListIt
 
 interface StockDetail {
   volume: number | null;
+  avgVolume25: number | null; // 25日平均出来高
   tradingValue: number | null;
   marketCap: number | null;
   sales: number | null;
@@ -251,7 +253,7 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
       epsGrowthRate = parseNumber(growthRow.values[3] ?? "");
     }
 
-    return {
+    const stockDetail = {
       volume: parseNumber(detail.volumeText),
       tradingValue: parseTradingValue(detail.tradingText),
       marketCap: parseMarketCap(detail.capText),
@@ -261,8 +263,42 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
       epsGrowthRate,
       marginRatio: parseNumber(detail.marginRatioText),
     };
+
+    // ── 25日平均出来高（日足ページから取得）──
+    let avgVolume25: number | null = null;
+    try {
+      await page.goto(`https://kabutan.jp/stock/kabuka?code=${code}&ashi=day`, {
+        waitUntil: "domcontentloaded",
+        timeout: 30000,
+      });
+      await page.waitForTimeout(500);
+      const dailyVolumes = await page.evaluate(() => {
+        const tables = document.querySelectorAll("table");
+        for (const t of tables) {
+          const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
+          // 「日付」と「売買高」の両方を含むテーブルを選択（今日だけの表を除外）
+          if (!headers.some(h => h.includes("日付")) || !headers.some(h => h.includes("売買高"))) continue;
+          const rows = Array.from(t.querySelectorAll("tr")).slice(1);
+          return rows.slice(0, 25).map(tr => {
+            const tds = tr.querySelectorAll("td");
+            return tds[tds.length - 1]?.textContent?.trim().replace(/,/g, "") ?? "";
+          });
+        }
+        return [];
+      });
+      const volumes = dailyVolumes
+        .map(v => parseFloat(v))
+        .filter(v => !isNaN(v) && v > 0);
+      if (volumes.length >= 20) {
+        avgVolume25 = Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length);
+      }
+    } catch {
+      // avgVolume25 は null のまま
+    }
+
+    return { ...stockDetail, avgVolume25 };
   } catch {
-    return { volume: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null, marginRatio: null };
+    return { volume: null, avgVolume25: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null, marginRatio: null };
   } finally {
     await ctx.close();
   }
