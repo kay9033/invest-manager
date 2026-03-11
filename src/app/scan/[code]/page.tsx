@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 interface StockDetail {
   code: string;
@@ -55,6 +55,27 @@ export default function ScanDetailPage() {
   const [data, setData] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [added, setAdded] = useState(false);
+  const router = useRouter();
+
+  async function handleAddToWatchlist() {
+    if (!data) return;
+    setAdding(true);
+    try {
+      const res = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, reason: `スキャンで検出（${data.stock.name}）` }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAdded(true);
+      router.push("/watchlist");
+    } catch (err) {
+      alert(`追加に失敗: ${err instanceof Error ? err.message : String(err)}`);
+      setAdding(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/scan/${code}`)
@@ -101,7 +122,14 @@ export default function ScanDetailPage() {
           </div>
           {scan && <p className="mt-1 text-sm text-gray-500">スキャン日: {scan.scanDate}</p>}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAddToWatchlist}
+            disabled={adding || added}
+            className="px-3 py-1.5 text-sm font-medium bg-emerald-700 hover:bg-emerald-600 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+          >
+            {added ? "追加済み" : adding ? "追加中..." : "+ 監視リスト"}
+          </button>
           <a
             href={kabutanUrl}
             target="_blank"

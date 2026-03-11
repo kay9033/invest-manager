@@ -84,8 +84,6 @@ export default function ScanPage() {
   const [loading, setLoading] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [adding, setAdding] = useState<Record<string, boolean>>({});
-  const [added, setAdded] = useState<Record<string, boolean>>({});
   const [progress, setProgress] = useState<ScanProgressState | null>(null);
   const router = useRouter();
 
@@ -133,27 +131,6 @@ export default function ScanPage() {
     }
   }
 
-  async function handleAddToWatchlist(code: string, name: string) {
-    setAdding((prev) => ({ ...prev, [code]: true }));
-    try {
-      const res = await fetch("/api/watchlist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code,
-          reason: `スキャンで検出（${name}）`,
-        }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setAdded((prev) => ({ ...prev, [code]: true }));
-    } catch (err) {
-      alert(`追加に失敗: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setAdding((prev) => ({ ...prev, [code]: false }));
-    }
-  }
-
-  const passedResults = scanResult?.results.filter((r) => r.passed) ?? [];
 
   return (
     <div className="space-y-6">
@@ -230,44 +207,6 @@ export default function ScanPage() {
               </span>
             </div>
           </div>
-
-          {/* フィルター通過銘柄への一括追加ボタン */}
-          {passedResults.length > 0 && (
-            <div className="space-y-3">
-              <h2 className="text-lg font-semibold text-white">
-                フィルター通過銘柄 ({passedResults.length}件)
-              </h2>
-              <div className="space-y-2">
-                {passedResults.map((r) => (
-                  <div
-                    key={r.code}
-                    className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-lg px-4 py-3"
-                  >
-                    <div>
-                      <span className="font-mono font-bold text-emerald-400">
-                        {r.code}
-                      </span>
-                      <span className="ml-3 text-white">{r.name}</span>
-                      <span className="ml-3 text-xs text-gray-400">
-                        スコア: {r.score}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => handleAddToWatchlist(r.code, r.name)}
-                      disabled={adding[r.code] || added[r.code]}
-                      className="px-3 py-1.5 text-xs font-medium rounded-md bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {added[r.code]
-                        ? "追加済み"
-                        : adding[r.code]
-                          ? "追加中..."
-                          : "監視リストに追加"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* 全結果テーブル */}
           <div>
