@@ -256,6 +256,21 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
       salesGrowthRate = parseNumber(growthRow.values[0] ?? "");
       epsGrowthRate = parseNumber(growthRow.values[3] ?? "");
     }
+    // フォールバック: 前期比が "赤転"/"赤縮"/"黒転"/"－" 等で数値取得できない場合、最新2期から計算
+    if (epsGrowthRate === null && dataRows.length >= 2) {
+      const prev = parseNumber(dataRows[dataRows.length - 2].values[3] ?? "");
+      const curr = parseNumber(dataRows[dataRows.length - 1].values[3] ?? "");
+      if (prev !== null && curr !== null && prev !== 0) {
+        epsGrowthRate = ((curr - prev) / Math.abs(prev)) * 100;
+      }
+    }
+    if (salesGrowthRate === null && dataRows.length >= 2) {
+      const prev = parseNumber(dataRows[dataRows.length - 2].values[0] ?? "");
+      const curr = parseNumber(dataRows[dataRows.length - 1].values[0] ?? "");
+      if (prev !== null && curr !== null && prev !== 0) {
+        salesGrowthRate = ((curr - prev) / Math.abs(prev)) * 100;
+      }
+    }
 
     const stockDetail = {
       hasBizData: detail.bizRows.length > 0,
