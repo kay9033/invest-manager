@@ -142,6 +142,7 @@ async function scrapeListPage(browser: Browser, pageNum: number): Promise<ListIt
 // ────────────────────────────────────────────────
 
 interface StockDetail {
+  hasBizData: boolean; // 業績テーブルが存在するか（ETF等は false）
   volume: number | null;
   avgVolume25: number | null; // 25日平均出来高
   tradingValue: number | null;
@@ -233,9 +234,12 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
 
     // ── 業績パース ──
     // ヘッダ行: 決算期 | 売上高 | 経常益 | 最終益 | １株益 | １株配 | 発表日
-    // データ行: "I 2024.12" → [22658, 12988, 4273, 345.3, 86.0, 25/02/13]
+    // データ行: "I 2024.12" or "2024.03" → [22658, 12988, 4273, 345.3, 86.0, 25/02/13]
     // 最終行: "前期比(%)" → [-5.9, -14.8, -16.2, -14.2, ...]
-    const dataRows = detail.bizRows.filter(r => r.label.startsWith("I") && !r.label.includes("予"));
+    const dataRows = detail.bizRows.filter(r =>
+      (r.label.startsWith("I") || r.label.startsWith("連") || r.label.startsWith("単") || /\d{4}\.\d{2}/.test(r.label)) &&
+      !r.label.includes("予")
+    );
     const growthRow = detail.bizRows.find(r => r.label.includes("前期比"));
 
     let sales: number | null = null;
@@ -254,6 +258,7 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
     }
 
     const stockDetail = {
+      hasBizData: detail.bizRows.length > 0,
       volume: parseNumber(detail.volumeText),
       tradingValue: parseTradingValue(detail.tradingText),
       marketCap: parseMarketCap(detail.capText),
@@ -306,7 +311,7 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
 
     return { ...stockDetail, avgVolume25 };
   } catch {
-    return { volume: null, avgVolume25: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null, marginRatio: null };
+    return { hasBizData: false, volume: null, avgVolume25: null, tradingValue: null, marketCap: null, sales: null, salesGrowthRate: null, eps: null, epsGrowthRate: null, marginRatio: null };
   } finally {
     await ctx.close();
   }
@@ -619,6 +624,14 @@ export async function scrapeKabutan(): Promise<ScrapedStock[]> {
         Promise.all(chunk.map(item => scrapeInstitutionalIncrease(browser, item.code))),
       ]);
       for (let j = 0; j < chunk.length; j++) {
+        // ETF・商品ファンド等（業績テーブルなし）はCAN-SLIM対象外として除外
+        if (!details[j].hasBizData) {
+          console.log(`[scraper] ETF/ファンド除外: ${chunk[j].code} ${chunk[j].name}`);
+          scanProgress.current = i + j + 1;
+          scanProgress.currentCode = chunk[j].code;
+          scanProgress.currentName = chunk[j].name;
+          continue;
+        }
         const prices = monthlyPricesList[j];
         const stock3m = calcReturn(prices, 3);
         const stock6m = calcReturn(prices, 6);
