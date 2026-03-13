@@ -102,16 +102,20 @@ export default function ScanDetailPage() {
   }
 
   const allReasons = scan?.reasons.map(parseReason) ?? [];
-  const positiveReasons = allReasons.filter(({ text }) =>
+
+  // 不通過銘柄: 全理由を「除外理由」として表示
+  // 通過銘柄: 加点/警告/データなしに分類
+  const failReasons = !scan?.passed ? allReasons : [];
+  const positiveReasons = scan?.passed ? allReasons.filter(({ text }) =>
     !text.includes("注意") && !text.includes("なし") && !text.includes("劣位") &&
     !text.includes("減少") && !text.includes("減益") && !text.includes("減収") &&
     !text.includes("データなし")
-  );
-  const warnReasons = allReasons.filter(({ text }) =>
+  ) : [];
+  const warnReasons = scan?.passed ? allReasons.filter(({ text }) =>
     text.includes("注意") || text.includes("劣位") || text.includes("減少") ||
     text.includes("減益") || text.includes("減収")
-  );
-  const missingReasons = allReasons.filter(({ text }) => text.includes("データなし"));
+  ) : [];
+  const missingReasons = scan?.passed ? allReasons.filter(({ text }) => text.includes("データなし")) : [];
   const scoredTotal = allReasons.reduce((sum, { points }) => sum + (points ?? 0), 0);
 
   return (
@@ -182,6 +186,12 @@ export default function ScanDetailPage() {
           )}
 
           <div className="space-y-1.5">
+            {failReasons.map(({ text }, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="text-red-400 mt-0.5 shrink-0">✗</span>
+                <span className="text-red-300 flex-1">{text}</span>
+              </div>
+            ))}
             {positiveReasons.map(({ text, points }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-emerald-400 mt-0.5 shrink-0">✓</span>
