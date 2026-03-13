@@ -51,28 +51,26 @@ function r(reasons: string[], points: number, text: string): void {
  */
 export function filterStock(scan: ScanData): FilterResult {
   const reasons: string[] = [];
+  const failReasons: string[] = [];
   let score = 0;
 
   // ══════════════════════════════════════════════
-  // 必須通過条件（Hard Filters）
+  // 必須通過条件（Hard Filters）— 失敗しても採点を続ける
   // ══════════════════════════════════════════════
 
   // 1. 新高値更新（必須）
   if (!scan.isNewHigh) {
-    reasons.push("新高値更新なし");
-    return { passed: false, reasons, score: 0 };
+    failReasons.push("❌ 新高値更新なし");
   }
 
   // 2. 株価100円以上
   if (scan.closePrice !== null && scan.closePrice < 100) {
-    reasons.push(`株価${scan.closePrice}円 - 低位株除外（100円未満）`);
-    return { passed: false, reasons, score: 0 };
+    failReasons.push(`❌ 株価${scan.closePrice}円 - 低位株除外（100円未満）`);
   }
 
   // 3. 売買代金5億円以上
   if (scan.tradingValue !== null && scan.tradingValue < 500_000_000) {
-    reasons.push(`売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円 - 5億円未満（流動性不足）`);
-    return { passed: false, reasons, score: 0 };
+    failReasons.push(`❌ 売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円 - 5億円未満（流動性不足）`);
   }
 
   // 4. 出来高スパイク150%以上
@@ -81,23 +79,27 @@ export function filterStock(scan: ScanData): FilterResult {
     volumeRatio = (scan.volume / scan.avgVolume25) * 100;
   }
   if (volumeRatio !== null && volumeRatio < 150) {
-    reasons.push(`出来高比率${volumeRatio.toFixed(0)}% - 25日平均の150%未満（スパイクなし）`);
-    return { passed: false, reasons, score: 0 };
+    failReasons.push(`❌ 出来高比率${volumeRatio.toFixed(0)}% - 25日平均の150%未満（スパイクなし）`);
   }
 
   // 5. 年次EPS2期連続マイナス → 成長トレンド崩壊として除外
   if (scan.annualEpsGrowths && scan.annualEpsGrowths.length >= 2) {
     const valid = scan.annualEpsGrowths.filter((v): v is number => v !== null);
     if (valid.length >= 2 && valid.slice(-2).every(g => g < 0)) {
-      reasons.push(`年間EPS2期連続減少（${valid.slice(-2).map(g => g.toFixed(1)).join("%, ")}%）- 成長トレンド崩壊`);
-      return { passed: false, reasons, score: 0 };
+      failReasons.push(`❌ 年間EPS2期連続減少（${valid.slice(-2).map(g => g.toFixed(1)).join("%, ")}%）- 成長トレンド崩壊`);
     }
   }
 
-  // 通過情報（スコアなし）
-  reasons.push("全必須条件クリア（新高値・流動性・出来高スパイク）");
-  if (scan.tradingValue !== null) {
-    reasons.push(`売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円`);
+  const passed = failReasons.length === 0;
+
+  // 必須条件の結果を先頭に追加
+  if (passed) {
+    reasons.push("✅ 全必須条件クリア（新高値・流動性・出来高スパイク）");
+    if (scan.tradingValue !== null) {
+      reasons.push(`売買代金${(scan.tradingValue / 100_000_000).toFixed(1)}億円`);
+    }
+  } else {
+    reasons.push(...failReasons);
   }
   if (volumeRatio !== null) {
     reasons.push(`出来高比率${volumeRatio.toFixed(0)}%（25日平均比）`);
@@ -266,6 +268,6 @@ export function filterStock(scan: ScanData): FilterResult {
     }
   }
 
-  // スコアは設計上0-100点満点（正規化不要）
-  return { passed: true, reasons, score: Math.min(score, 100) };
+  // スコアは設計上0-100点満点（正規化不要）。不通過でもスコアは参考値として保持
+  return { passed, reasons, score: Math.min(score, 100) };
 }

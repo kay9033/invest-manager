@@ -103,19 +103,22 @@ export default function ScanDetailPage() {
 
   const allReasons = scan?.reasons.map(parseReason) ?? [];
 
-  // 不通過銘柄: 全理由を「除外理由」として表示
-  // 通過銘柄: 加点/警告/データなしに分類
-  const failReasons = !scan?.passed ? allReasons : [];
-  const positiveReasons = scan?.passed ? allReasons.filter(({ text }) =>
-    !text.includes("注意") && !text.includes("なし") && !text.includes("劣位") &&
-    !text.includes("減少") && !text.includes("減益") && !text.includes("減収") &&
+  // ❌ で始まる理由 = 必須条件失敗、✅ = 必須条件クリア、[+N] = 加点、その他 = 警告/情報
+  const failReasons = allReasons.filter(({ text }) => text.startsWith("❌"));
+  const passReasons = allReasons.filter(({ text }) => text.startsWith("✅"));
+  const positiveReasons = allReasons.filter(({ points, text }) => points !== null && !text.startsWith("❌"));
+  const warnReasons = allReasons.filter(({ text, points }) =>
+    points === null && !text.startsWith("❌") && !text.startsWith("✅") &&
+    (text.includes("注意") || text.includes("劣位") || text.includes("減少") ||
+     text.includes("減益") || text.includes("減収") || text.includes("なし"))
+  );
+  const infoReasons = allReasons.filter(({ text, points }) =>
+    points === null && !text.startsWith("❌") && !text.startsWith("✅") &&
+    !text.includes("注意") && !text.includes("劣位") && !text.includes("減少") &&
+    !text.includes("減益") && !text.includes("減収") && !text.includes("なし") &&
     !text.includes("データなし")
-  ) : [];
-  const warnReasons = scan?.passed ? allReasons.filter(({ text }) =>
-    text.includes("注意") || text.includes("劣位") || text.includes("減少") ||
-    text.includes("減益") || text.includes("減収")
-  ) : [];
-  const missingReasons = scan?.passed ? allReasons.filter(({ text }) => text.includes("データなし")) : [];
+  );
+  const missingReasons = allReasons.filter(({ text }) => text.includes("データなし"));
   const scoredTotal = allReasons.reduce((sum, { points }) => sum + (points ?? 0), 0);
 
   return (
@@ -188,23 +191,30 @@ export default function ScanDetailPage() {
           <div className="space-y-1.5">
             {failReasons.map(({ text }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
-                <span className="text-red-400 mt-0.5 shrink-0">✗</span>
-                <span className="text-red-300 flex-1">{text}</span>
+                <span className="text-gray-400 flex-1">{text}</span>
+              </div>
+            ))}
+            {passReasons.map(({ text }, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="text-gray-300 flex-1">{text}</span>
               </div>
             ))}
             {positiveReasons.map(({ text, points }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-emerald-400 mt-0.5 shrink-0">✓</span>
                 <span className="text-gray-200 flex-1">{text}</span>
-                {points !== null && (
-                  <span className="text-emerald-500 font-mono text-xs shrink-0 mt-0.5">+{points}pt</span>
-                )}
+                <span className="text-emerald-500 font-mono text-xs shrink-0 mt-0.5">+{points}pt</span>
               </div>
             ))}
             {warnReasons.map(({ text }, i) => (
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className="text-amber-400 mt-0.5 shrink-0">!</span>
                 <span className="text-gray-400 flex-1">{text}</span>
+              </div>
+            ))}
+            {infoReasons.map(({ text }, i) => (
+              <div key={i} className="flex items-start gap-2 text-sm">
+                <span className="text-gray-500 flex-1">{text}</span>
               </div>
             ))}
             {missingReasons.map(({ text }, i) => (
