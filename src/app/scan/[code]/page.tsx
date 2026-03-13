@@ -26,6 +26,7 @@ interface ScanDetail {
   scanDate: string;
   closePrice: number | null;
   volume: number | null;
+  avgVolume25: number | null;
   tradingValue: number | null;
   score: number | null;
   passed: boolean | null;
@@ -93,6 +94,11 @@ export default function ScanDetailPage() {
   if (!data) return null;
 
   const { stock, scan } = data;
+  // volumeRatioはDB未保存の場合、volume/avgVolume25から計算（フィルターと同ロジック）
+  const displayVolumeRatio = scan?.volumeRatio ??
+    (scan?.volume != null && scan?.avgVolume25 != null && scan.avgVolume25 > 0
+      ? (scan.volume / scan.avgVolume25) * 100
+      : null);
   const kabutanUrl = `https://kabutan.jp/stock/?code=${code}`;
 
   function parseReason(raw: string): { points: number | null; text: string } {
@@ -246,7 +252,7 @@ export default function ScanDetailPage() {
           <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
             <Row label="株価" v={scan?.closePrice} fmt={(v) => `${(v as number).toLocaleString()}円`} />
             <Row label="売買代金" v={scan?.tradingValue} fmt={(v) => `${((v as number) / 1e8).toFixed(1)}億円`} />
-            <Row label="出来高比率(25日)" v={scan?.volumeRatio} fmt={(v) => `${(v as number).toFixed(0)}%`} />
+            <Row label="出来高比率(25日)" v={displayVolumeRatio} fmt={(v) => `${(v as number).toFixed(0)}%`} />
             <Row label="時価総額" v={stock.marketCap} fmt={(v) => `${((v as number) / 1e8).toFixed(0)}億円`} />
           </div>
 
