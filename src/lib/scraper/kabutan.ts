@@ -300,8 +300,8 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
       if (volumes.length >= 20) {
         avgVolume25 = Math.round(volumes.reduce((a, b) => a + b, 0) / volumes.length);
       }
-    } catch {
-      // avgVolume25 は null のまま
+    } catch (e) {
+      console.error(`[avgVolume25] ${code}:`, e instanceof Error ? e.message : e);
     }
 
     return { ...stockDetail, avgVolume25 };

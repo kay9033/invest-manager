@@ -40,6 +40,7 @@ export async function POST() {
     const scraped = await scrapeKabutan();
     const today = new Date().toISOString().split("T")[0];
     const results = [];
+    const warnings: { code: string; name: string; missing: string[] }[] = [];
 
     // 同日の既存スキャン結果を削除して重複を防ぐ
     db.delete(scans).where(eq(scans.scanDate, today)).run();
@@ -133,6 +134,16 @@ export async function POST() {
         score: filterResult.score,
         reasons: filterResult.reasons,
       });
+
+      // 取得できなかったフィールドを記録
+      const missing: string[] = [];
+      if (item.avgVolume25 == null) missing.push("25日平均出来高");
+      if (item.epsGrowthRate == null) missing.push("EPS成長率");
+      if (item.salesGrowthRate == null) missing.push("売上成長率");
+      if (item.roe == null) missing.push("ROE");
+      if (item.volume == null) missing.push("出来高");
+      if (item.tradingValue == null) missing.push("売買代金");
+      if (missing.length > 0) warnings.push({ code: item.code, name: item.name, missing });
     }
 
     const passed = results.filter((r) => r.passed).length;
@@ -141,6 +152,7 @@ export async function POST() {
       scanned: scraped.length,
       passed,
       results,
+      warnings,
     });
   } catch (err) {
     console.error("[POST /api/scan]", err);

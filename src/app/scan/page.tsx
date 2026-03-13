@@ -15,10 +15,17 @@ interface ScanResult {
   reasons: string[];
 }
 
+interface ScanWarning {
+  code: string;
+  name: string;
+  missing: string[];
+}
+
 interface ScanResponse {
   scanned: number;
   passed: number;
   results: ScanResult[];
+  warnings?: ScanWarning[];
 }
 
 type RowData = Record<string, unknown> & ScanResult;
@@ -192,6 +199,35 @@ export default function ScanPage() {
 
       {scanResult && (
         <div className="space-y-6">
+          {/* 取得失敗警告 */}
+          {scanResult.warnings && scanResult.warnings.length > 0 && (
+            <details className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg">
+              <summary className="px-4 py-3 text-sm text-yellow-400 cursor-pointer select-none">
+                取得失敗: {scanResult.warnings.length}件のデータが未取得（クリックで詳細）
+              </summary>
+              <div className="px-4 pb-3 max-h-60 overflow-y-auto">
+                <table className="w-full text-xs mt-2">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b border-gray-700">
+                      <th className="pb-1 pr-3">コード</th>
+                      <th className="pb-1 pr-3">銘柄名</th>
+                      <th className="pb-1">未取得フィールド</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scanResult.warnings.map((w) => (
+                      <tr key={w.code} className="border-b border-gray-800/50">
+                        <td className="py-1 pr-3 text-gray-300 font-mono">{w.code}</td>
+                        <td className="py-1 pr-3 text-gray-400">{w.name}</td>
+                        <td className="py-1 text-yellow-600">{w.missing.join("、")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          )}
+
           {/* サマリー */}
           <div className="flex gap-6 text-sm">
             <div className="bg-gray-900 border border-gray-800 rounded-lg px-4 py-3">
