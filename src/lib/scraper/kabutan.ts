@@ -267,27 +267,33 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
     // ── 25日平均出来高（日足ページから取得）──
     let avgVolume25: number | null = null;
     try {
-      await page.goto(`https://kabutan.jp/stock/kabuka?code=${code}&ashi=day`, {
+      const dailyPage = await ctx.newPage();
+      await dailyPage.goto(`https://kabutan.jp/stock/kabuka?code=${code}&ashi=day`, {
         waitUntil: "domcontentloaded",
         timeout: 30000,
       });
-      await page.waitForTimeout(500);
-      const dailyVolumes = await page.evaluate(() => {
+      await dailyPage.waitForTimeout(500);
+      const dailyVolumes = await dailyPage.evaluate(() => {
         const tables = document.querySelectorAll("table");
         for (const t of tables) {
-          const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
-          // 「日付」と「売買高」の両方を含むテーブルを選択（今日だけの表を除外）
+          // theadのth行のみからヘッダーを取得（tbody行のth=日付セルを除外）
+          const theadRow = t.querySelector("thead tr");
+          if (!theadRow) continue;
+          const headers = Array.from(theadRow.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
           if (!headers.some(h => h.includes("日付")) || !headers.some(h => h.includes("売買高"))) continue;
           const volIdx = headers.findIndex(h => h.includes("売買高"));
           if (volIdx < 0) continue;
-          const rows = Array.from(t.querySelectorAll("tr")).slice(1);
+          // tbodyのtr（日付はth、数値はtd）
+          const rows = Array.from(t.querySelectorAll("tbody tr"));
           return rows.slice(0, 25).map(tr => {
             const tds = tr.querySelectorAll("td");
-            return tds[volIdx]?.textContent?.trim().replace(/,/g, "") ?? "";
+            // tdのインデックスは「日付th」の分だけ1つずれる（volIdx - 1）
+            return tds[volIdx - 1]?.textContent?.trim().replace(/,/g, "") ?? "";
           });
         }
         return [];
       });
+      await dailyPage.close();
       const volumes = dailyVolumes
         .map(v => parseFloat(v))
         .filter(v => !isNaN(v) && v > 0);
