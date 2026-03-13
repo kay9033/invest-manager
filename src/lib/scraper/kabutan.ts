@@ -478,7 +478,7 @@ export async function scrapeFinance(browser: Browser, code: string): Promise<Fin
       const tables = Array.from(document.querySelectorAll("table"));
 
       const isDataRow = (label: string) =>
-        (label.includes("単") || label.includes("連") || /^\d{4}\.\d{2}/.test(label)) &&
+        (label.includes("単") || label.includes("連") || /\d{4}\.\d{2}/.test(label)) &&
         !label.includes("予");
 
       // ── 年次業績テーブル: 「修正1株益」列を持つテーブルを検索 ──
