@@ -278,10 +278,12 @@ async function scrapeStockDetail(browser: Browser, code: string): Promise<StockD
           const headers = Array.from(t.querySelectorAll("th")).map(th => th.textContent?.trim() ?? "");
           // 「日付」と「売買高」の両方を含むテーブルを選択（今日だけの表を除外）
           if (!headers.some(h => h.includes("日付")) || !headers.some(h => h.includes("売買高"))) continue;
+          const volIdx = headers.findIndex(h => h.includes("売買高"));
+          if (volIdx < 0) continue;
           const rows = Array.from(t.querySelectorAll("tr")).slice(1);
           return rows.slice(0, 25).map(tr => {
             const tds = tr.querySelectorAll("td");
-            return tds[tds.length - 1]?.textContent?.trim().replace(/,/g, "") ?? "";
+            return tds[volIdx]?.textContent?.trim().replace(/,/g, "") ?? "";
           });
         }
         return [];
